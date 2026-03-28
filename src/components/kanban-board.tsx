@@ -150,6 +150,7 @@ export function KanbanBoard({
     if (task && task.status !== colKey) {
       onMoveTask(taskId, colKey);
     }
+    setDraggingTaskId(null);
     setOverColumn(null);
     dragCounter.current[colKey] = 0;
   };
