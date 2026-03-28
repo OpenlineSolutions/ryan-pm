@@ -14,7 +14,6 @@ import {
   useDroppable,
   useDraggable,
 } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { Task, Project, STATUS_COLUMNS, TaskStatus } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -143,20 +142,15 @@ function DraggableTaskCard({
   onReject: (id: string) => void;
   onEdit: (task: Task) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { task },
   });
 
-  const style = transform
-    ? { transform: CSS.Translate.toString(transform), zIndex: 50, position: "relative" as const }
-    : undefined;
-
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={`mb-2 touch-none ${isDragging ? "opacity-40" : "cursor-grab active:cursor-grabbing"}`}
+      className={`mb-2 touch-none ${isDragging ? "opacity-30" : "cursor-grab active:cursor-grabbing"}`}
       {...attributes}
       {...listeners}
       // Prevent drag from stealing button clicks
@@ -315,8 +309,11 @@ export function KanbanBoard({
         })}
       </div>
 
-      {/* DragOverlay — sized to match the actual card, so it stays pinned to cursor */}
-      <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+      {/* DragOverlay — portal rendered at document.body, always above columns */}
+      <DragOverlay
+        dropAnimation={{ duration: 150, easing: "ease" }}
+        style={{ zIndex: 9999 }}
+      >
         {activeTask && (
           <div style={{ width: activeDragWidth || undefined }}>
             <TaskCardContent
