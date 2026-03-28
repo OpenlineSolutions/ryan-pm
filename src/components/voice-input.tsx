@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 interface VoiceInputProps {
@@ -22,12 +24,10 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Get Deepgram token from our API
       const tokenRes = await fetch("/api/deepgram-token");
-      if (!tokenRes.ok) throw new Error("Failed to get transcription token");
+      if (!tokenRes.ok) throw new Error("Failed to get token");
       const { token } = await tokenRes.json();
 
-      // Connect to Deepgram WebSocket
       const socket = new WebSocket(
         `wss://api.deepgram.com/v1/listen?model=nova-3&punctuate=true&smart_format=true`,
         ["token", token]
@@ -72,19 +72,18 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
       };
 
       socket.onerror = () => {
-        toast.error("Voice connection issue. You can type or paste text below.");
+        toast.error("Voice connection issue. Type below instead.");
         stopRecording();
       };
-    } catch (err: any) {
-      console.error("Microphone error:", err?.name, err?.message);
-      toast.error("Could not access microphone. Please allow microphone access and try again.");
+    } catch {
+      toast.error("Microphone access denied. Allow it in your browser and try again.");
     }
   }, []);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
     }
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.close();
@@ -96,89 +95,117 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
   const handleProcess = async () => {
     const fullText = transcript.trim();
     if (!fullText) {
-      toast.error("Nothing to process. Record or type something first.");
+      toast.error("Record or type something first.");
       return;
     }
     await onProcess(fullText);
     setTranscript("");
   };
 
+  const displayText = transcript + (interimText ? " " + interimText : "");
+  const wordCount = displayText.trim().split(/\s+/).filter(Boolean).length;
+
   return (
-    <Card className="p-6 border-border bg-card">
-      <div className="flex items-center gap-4 mb-4">
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={isProcessing}
-          className={`relative flex items-center justify-center w-14 h-14 rounded-full transition-all ${
-            isRecording
-              ? "bg-red-500 hover:bg-red-600"
-              : "bg-zinc-700 hover:bg-zinc-600"
-          }`}
-        >
-          {isRecording && (
-            <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-30" />
-          )}
-          <svg
-            className="w-6 h-6 text-white relative z-10"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            {isRecording ? (
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            ) : (
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-            )}
-          </svg>
-        </button>
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-foreground">
-            {isRecording ? "Listening..." : "Voice Input"}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {isRecording
-              ? "Speak naturally. Click stop when done."
-              : "Click the mic to start recording, or type below."}
-          </p>
-        </div>
-        <Button
-          onClick={handleProcess}
-          disabled={isProcessing || !transcript.trim()}
-          className="px-6"
-        >
-          {isProcessing ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  fill="none"
-                />
-                <path
-                  className="opacity-75"
+    <Card className="shadow-sm border-stone-200">
+      <CardContent className="p-0">
+        <div className="flex flex-col md:flex-row">
+
+          {/* Mic side */}
+          <div className="flex flex-col items-center justify-center gap-3 p-8 md:w-52 shrink-0">
+            <div className="relative flex items-center justify-center">
+              {isRecording && (
+                <>
+                  <span className="mic-ring-1 absolute inset-0 rounded-full bg-red-500/20" />
+                  <span className="mic-ring-2 absolute inset-0 rounded-full bg-red-500/15" />
+                  <span className="mic-ring-3 absolute inset-0 rounded-full bg-red-500/10" />
+                </>
+              )}
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isProcessing}
+                className={`relative z-10 w-24 h-24 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                  isRecording
+                    ? "bg-red-500 hover:bg-red-600 focus:ring-red-500 shadow-lg shadow-red-200"
+                    : "bg-stone-900 hover:bg-stone-700 focus:ring-stone-900 shadow-md"
+                }`}
+              >
+                <svg
+                  className="w-9 h-9 text-white"
                   fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              Processing...
-            </span>
-          ) : (
-            "Process with AI"
-          )}
-        </Button>
-      </div>
-      <Textarea
-        value={transcript + (interimText ? " " + interimText : "")}
-        onChange={(e) => {
-          setTranscript(e.target.value);
-          setInterimText("");
-        }}
-        placeholder="Your voice transcript will appear here, or paste meeting notes..."
-        className="min-h-[100px] bg-background border-border text-foreground placeholder:text-muted-foreground resize-none"
-      />
+                  viewBox="0 0 24 24"
+                >
+                  {isRecording ? (
+                    <rect x="7" y="7" width="10" height="10" rx="2" />
+                  ) : (
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                  )}
+                </svg>
+              </button>
+            </div>
+
+            {isRecording ? (
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm font-medium text-red-600">Recording</span>
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {isProcessing ? "Processing..." : "Tap to record"}
+              </span>
+            )}
+          </div>
+
+          {/* Divider */}
+          <Separator orientation="vertical" className="hidden md:block" />
+
+          {/* Transcript side */}
+          <div className="flex flex-col flex-1 p-6 gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">Transcript</span>
+              {wordCount > 0 && (
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {wordCount} words
+                </Badge>
+              )}
+            </div>
+
+            <Textarea
+              value={displayText}
+              onChange={(e) => {
+                setTranscript(e.target.value);
+                setInterimText("");
+              }}
+              placeholder="Your transcript will appear here as you speak. You can also paste notes or type directly."
+              className="flex-1 min-h-[100px] resize-none text-sm border-stone-200 focus-visible:ring-1 focus-visible:ring-blue-500 bg-stone-50"
+            />
+
+            <div className="flex justify-end">
+              <Button
+                onClick={handleProcess}
+                disabled={isProcessing || !transcript.trim()}
+                className="gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Extracting tasks...
+                  </>
+                ) : (
+                  <>
+                    Extract Tasks
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
     </Card>
   );
 }

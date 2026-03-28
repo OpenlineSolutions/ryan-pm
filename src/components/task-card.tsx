@@ -1,101 +1,83 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
+import { Task, Project } from "@/lib/types";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Task, Project, PRIORITY_COLORS } from "@/lib/types";
-import { Draggable } from "@hello-pangea/dnd";
 
 interface TaskCardProps {
   task: Task;
-  index: number;
   projects: Project[];
   onApprove: (taskId: string) => void;
   onReject: (taskId: string) => void;
   onEdit: (task: Task) => void;
 }
 
-export function TaskCard({
-  task,
-  index,
-  projects,
-  onApprove,
-  onReject,
-  onEdit,
-}: TaskCardProps) {
+const PRIORITY_BADGE: Record<string, string> = {
+  high: "bg-red-50 text-red-700 border-red-200",
+  medium: "bg-amber-50 text-amber-700 border-amber-200",
+  low: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+export function TaskCard({ task, projects, onApprove, onReject, onEdit }: TaskCardProps) {
   const project = projects.find((p) => p.id === task.project_id);
   const isInbox = task.status === "inbox";
 
   return (
-    <Draggable draggableId={task.id} index={index}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          className="mb-2"
-        >
-          <Card
-            className={`p-3 border-border bg-card cursor-grab active:cursor-grabbing transition-shadow ${
-              snapshot.isDragging ? "shadow-lg shadow-black/20 ring-1 ring-primary/30" : ""
-            } ${isInbox ? "border-l-2 border-l-yellow-500" : ""}`}
-            onClick={() => onEdit(task)}
-          >
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <h3 className="text-sm font-medium text-foreground leading-tight">
-                {task.title}
-              </h3>
-              <Badge
-                variant="outline"
-                className={`text-[10px] shrink-0 ${PRIORITY_COLORS[task.priority]}`}
-              >
-                {task.priority}
-              </Badge>
-            </div>
-
-            {task.description && (
-              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-                {task.description}
-              </p>
-            )}
-
-            <div className="flex items-center justify-between">
-              {project && (
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <span className="text-[11px] text-muted-foreground truncate max-w-[120px]">
-                    {project.name}
-                  </span>
-                </div>
-              )}
-
-              {isInbox && (
-                <div className="flex gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10"
-                    onClick={() => onApprove(task.id)}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                    onClick={() => onReject(task.id)}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
+    <Card
+      className="overflow-hidden shadow-sm hover:shadow-md border-stone-200 transition-shadow cursor-pointer"
+      onClick={() => onEdit(task)}
+    >
+      {project && (
+        <div className="h-[3px] w-full" style={{ backgroundColor: project.color }} />
       )}
-    </Draggable>
+      <CardContent className="p-3">
+        <div className="flex items-start gap-2 mb-1.5">
+          <p className="text-sm font-medium text-stone-900 leading-snug flex-1">{task.title}</p>
+          <Badge
+            variant="outline"
+            className={`text-[10px] font-medium shrink-0 ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}
+          >
+            {task.priority}
+          </Badge>
+        </div>
+
+        {task.description && (
+          <p className="text-xs text-stone-500 mb-2.5 line-clamp-2 leading-relaxed">
+            {task.description}
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          {project && (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
+              <span className="text-[11px] text-stone-400 truncate">{project.name}</span>
+            </div>
+          )}
+
+          {isInbox && (
+            <div className="flex gap-1.5 ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[11px] text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                onClick={() => onApprove(task.id)}
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[11px] text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => onReject(task.id)}
+              >
+                Reject
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
