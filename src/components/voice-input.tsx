@@ -20,6 +20,10 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
 
   const startRecording = useCallback(async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        toast.error("Microphone not available. Use HTTPS or type your notes below.");
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // Get Deepgram token from our API
@@ -35,9 +39,17 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
       socketRef.current = socket;
 
       socket.onopen = () => {
-        // Start sending audio
+        // Pick the best supported MIME type
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: "audio/webm;codecs=opus",
+          ...(mimeType ? { mimeType } : {}),
         });
         mediaRecorderRef.current = mediaRecorder;
 
