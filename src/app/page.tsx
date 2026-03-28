@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { VoiceInput } from "@/components/voice-input";
 import { KanbanBoard } from "@/components/kanban-board";
 import { AgentsPanel } from "@/components/agents-panel";
+import { TaskSheet } from "@/components/task-sheet";
 import { Separator } from "@/components/ui/separator";
 import { Task, Project, TaskStatus } from "@/lib/types";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("board");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -188,13 +190,22 @@ export default function Home() {
             onMoveTask={handleMoveTask}
             onApprove={handleApprove}
             onReject={handleReject}
-            onEdit={(task) => console.log("Edit:", task)}
+            onEdit={setEditingTask}
           />
         </main>
       )}
 
       {/* Agents tab */}
       {activeTab === "agents" && <AgentsPanel onBoardChanged={fetchTasks} />}
+
+      {/* Task edit sheet */}
+      <TaskSheet
+        task={editingTask}
+        projects={projects}
+        open={editingTask !== null}
+        onOpenChange={(open) => { if (!open) setEditingTask(null); }}
+        onSaved={fetchTasks}
+      />
     </div>
   );
 }

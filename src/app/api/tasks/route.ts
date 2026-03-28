@@ -17,8 +17,13 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const { id, status, approved, title, description, priority, project_id, assignee } = await req.json();
+  const body = await req.json();
+  const { id, status, approved, title, description, priority, assignee } = body;
   if (!id) return NextResponse.json({ error: "Missing task id" }, { status: 400 });
+
+  // project_id handled separately: explicit key in body = always write it (allows clearing to null)
+  const hasProjectId = Object.prototype.hasOwnProperty.call(body, "project_id");
+  const project_id: string | null = body.project_id || null;
 
   const sql = getDb();
   try {
@@ -29,7 +34,7 @@ export async function PATCH(req: Request) {
         title = COALESCE(${title ?? null}, title),
         description = COALESCE(${description ?? null}, description),
         priority = COALESCE(${priority ?? null}, priority),
-        project_id = COALESCE(${project_id ?? null}, project_id),
+        project_id = CASE WHEN ${hasProjectId} THEN ${project_id} ELSE project_id END,
         assignee = COALESCE(${assignee ?? null}, assignee)
       WHERE id = ${id}
     `;

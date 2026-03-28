@@ -40,6 +40,7 @@ function TaskCard({
   projects,
   onApprove,
   onReject,
+  onEdit,
   isDragging,
   onDragStart,
   onDragEnd,
@@ -48,6 +49,7 @@ function TaskCard({
   projects: Project[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onEdit: (task: Task) => void;
   isDragging: boolean;
   onDragStart: (taskId: string) => void;
   onDragEnd: () => void;
@@ -58,6 +60,11 @@ function TaskCard({
   return (
     <div
       draggable
+      onClick={(e) => {
+        // Don't open sheet if clicking a button (approve/reject)
+        if ((e.target as HTMLElement).closest("button")) return;
+        onEdit(task);
+      }}
       onDragStart={(e) => {
         // Don't drag if clicking a button
         if ((e.target as HTMLElement).closest("button")) {
@@ -69,7 +76,7 @@ function TaskCard({
         onDragStart(task.id);
       }}
       onDragEnd={onDragEnd}
-      className={`mb-2 cursor-grab active:cursor-grabbing transition-opacity duration-150 ${
+      className={`mb-2 cursor-pointer active:cursor-grabbing transition-opacity duration-150 ${
         isDragging ? "opacity-40" : "opacity-100"
       }`}
     >
@@ -137,6 +144,7 @@ export function KanbanBoard({
   onMoveTask,
   onApprove,
   onReject,
+  onEdit,
 }: KanbanBoardProps) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<TaskStatus | null>(null);
@@ -208,6 +216,7 @@ export function KanbanBoard({
                 projects={projects}
                 onApprove={onApprove}
                 onReject={onReject}
+                onEdit={onEdit}
                 isDragging={draggingTaskId === task.id}
                 onDragStart={setDraggingTaskId}
                 onDragEnd={() => {
