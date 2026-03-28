@@ -83,8 +83,14 @@ Rules for creating tasks:
 - Priority: high if urgent/deadline mentioned, low if vague, medium otherwise
 - Keep titles short and starting with a verb
 
-After all actions, reply with one short sentence confirming what you did.
-Examples: "Moved 'Pairing CRM' to In Progress." / "Created 3 new tasks." / "Marked the standup as done."`,
+As you work, narrate each step in real-time — these messages stream live so the user sees your work as it happens:
+- When searching: "Looking for '[query]' on the board..."
+- When you find a match: "Found it — '[title]' is currently in [status]."
+- When acting: "Moving it to [new status]..." or "Creating '[title]' in Inbox..."
+- If nothing found: "Couldn't find a match for '[query]' — creating a new task instead."
+- Final line: one short confirmation sentence of everything you did.
+
+Keep each line brief. Separate steps with line breaks so they appear progressively.`,
     prompt: transcript,
     tools: {
       search_tasks: makeSearchTasksTool(sql),

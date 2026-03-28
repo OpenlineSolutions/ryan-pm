@@ -106,11 +106,8 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
         <div className="h-6 flex items-center justify-center">
           {isProcessing ? (
             <div className="flex items-center gap-2 text-sm text-stone-500">
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Updating board...
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Working...
             </div>
           ) : isRecording ? (
             <div className="flex items-center gap-2">
@@ -124,7 +121,7 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
       </div>
 
       {/* Live transcript while recording */}
-      {displayText && !agentReply && (
+      {displayText && !agentReply && !isProcessing && (
         <div className="w-full max-w-xl bg-stone-50 border border-stone-200 rounded-xl px-5 py-4">
           <p className="text-sm text-stone-700 leading-relaxed">
             {transcript}
@@ -133,15 +130,28 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
         </div>
       )}
 
-      {/* Agent reply */}
+      {/* Live agent stream — shows while processing AND stays after done */}
       {agentReply && (
-        <div className="w-full max-w-xl bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-start gap-3">
-          <span className="text-emerald-500 mt-0.5 shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+        <div className={`w-full max-w-xl rounded-xl px-5 py-4 flex items-start gap-3 transition-colors duration-500 ${
+          isProcessing
+            ? "bg-blue-50 border border-blue-200"
+            : "bg-emerald-50 border border-emerald-200"
+        }`}>
+          <span className={`mt-0.5 shrink-0 ${isProcessing ? "text-blue-400" : "text-emerald-500"}`}>
+            {isProcessing ? (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
           </span>
-          <p className="text-sm text-emerald-800 leading-relaxed">{agentReply}</p>
+          <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isProcessing ? "text-blue-800" : "text-emerald-800"}`}>
+            {agentReply}
+          </p>
         </div>
       )}
 
