@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 interface VoiceInputProps {
-  onProcess: (transcript: string) => Promise<void>;
-  isProcessing: boolean;
+  onBoardChanged: () => void;
 }
 
-const SILENCE_DELAY = 2500; // ms of silence before auto-submit
+const SILENCE_DELAY = 2500;
 
-export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
+export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
+  const [agentReply, setAgentReply] = useState("");
   const [textInput, setTextInput] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -43,20 +44,51 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
     setInterimText("");
   }, []);
 
+  const runAgent = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    setIsProcessing(true);
+    setAgentReply("");
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: text }),
+      });
+      if (!res.ok) throw new Error("Agent failed");
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let reply = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        reply += decoder.decode(value, { stream: true });
+        setAgentReply(reply);
+      }
+
+      setTranscript("");
+      transcriptRef.current = "";
+      onBoardChanged();
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [onBoardChanged]);
+
   const autoSubmit = useCallback(async () => {
     stopRecording();
     const text = transcriptRef.current.trim();
-    if (!text) return;
-    setTranscript("");
-    transcriptRef.current = "";
-    await onProcess(text);
-  }, [stopRecording, onProcess]);
+    if (text) await runAgent(text);
+  }, [stopRecording, runAgent]);
 
   const startRecording = useCallback(async () => {
     if (isProcessing) return;
+    setAgentReply("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
       const tokenRes = await fetch("/api/deepgram-token");
       if (!tokenRes.ok) throw new Error("Failed to get token");
       const { token } = await tokenRes.json();
@@ -80,13 +112,11 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
           ...(mimeType ? { mimeType } : {}),
         });
         mediaRecorderRef.current = mediaRecorder;
-
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
             socket.send(event.data);
           }
         };
-
         mediaRecorder.start(250);
         setIsRecording(true);
       };
@@ -103,7 +133,6 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
             setTranscript(updated);
             setInterimText("");
 
-            // Reset silence timer — auto-submit after silence
             clearSilenceTimer();
             silenceTimerRef.current = setTimeout(() => {
               autoSubmit();
@@ -128,7 +157,7 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
     const text = textInput.trim();
     if (!text || isProcessing) return;
     setTextInput("");
-    await onProcess(text);
+    await runAgent(text);
   };
 
   const displayText = transcript + (interimText ? " " + interimText : "");
@@ -165,7 +194,7 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
           </button>
         </div>
 
-        {/* Status label */}
+        {/* Status */}
         <div className="h-6 flex items-center justify-center">
           {isProcessing ? (
             <div className="flex items-center gap-2 text-sm text-stone-500">
@@ -173,7 +202,7 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Extracting tasks...
+              Thinking...
             </div>
           ) : isRecording ? (
             <div className="flex items-center gap-2">
@@ -181,20 +210,30 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
               <span className="text-sm font-medium text-red-600">Recording — stops automatically</span>
             </div>
           ) : (
-            <span className="text-sm text-stone-400">Tap to speak your tasks</span>
+            <span className="text-sm text-stone-400">Tap to speak — add tasks, move them, anything</span>
           )}
         </div>
       </div>
 
-      {/* Live transcript */}
-      {displayText && (
+      {/* Live transcript while recording */}
+      {displayText && !agentReply && (
         <div className="w-full max-w-xl bg-stone-50 border border-stone-200 rounded-xl px-5 py-4">
           <p className="text-sm text-stone-700 leading-relaxed">
             {transcript}
-            {interimText && (
-              <span className="text-stone-400"> {interimText}</span>
-            )}
+            {interimText && <span className="text-stone-400"> {interimText}</span>}
           </p>
+        </div>
+      )}
+
+      {/* AI reply after processing */}
+      {agentReply && (
+        <div className="w-full max-w-xl bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-start gap-3">
+          <span className="text-emerald-500 mt-0.5 shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
+          <p className="text-sm text-emerald-800 leading-relaxed">{agentReply}</p>
         </div>
       )}
 
@@ -205,21 +244,17 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
         <div className="flex-1 h-px bg-stone-200" />
       </div>
 
-      {/* Text input fallback */}
+      {/* Text input */}
       <form onSubmit={handleTextSubmit} className="flex gap-2 w-full max-w-xl">
         <Input
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
-          placeholder="Paste notes or type tasks directly..."
+          placeholder='e.g. "Add a call with Joy Dental for Friday, mark standup as done"'
           disabled={isProcessing || isRecording}
           className="flex-1 text-sm border-stone-200 focus-visible:ring-1 focus-visible:ring-blue-500"
         />
-        <Button
-          type="submit"
-          disabled={isProcessing || !textInput.trim()}
-          className="shrink-0"
-        >
-          Extract
+        <Button type="submit" disabled={isProcessing || !textInput.trim()} className="shrink-0">
+          Go
         </Button>
       </form>
     </div>

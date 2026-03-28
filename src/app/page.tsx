@@ -7,11 +7,11 @@ import { AiChat } from "@/components/ai-chat";
 import { Separator } from "@/components/ui/separator";
 import { Task, Project, TaskStatus } from "@/lib/types";
 import { toast } from "sonner";
+// toast is used in handleApprove / handleReject below
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchTasks = useCallback(async () => {
@@ -35,24 +35,6 @@ export default function Home() {
   useEffect(() => {
     Promise.all([fetchTasks(), fetchProjects()]).finally(() => setIsLoading(false));
   }, [fetchTasks, fetchProjects]);
-
-  const handleProcess = async (transcript: string) => {
-    setIsProcessing(true);
-    try {
-      const res = await fetch("/api/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
-      });
-      if (!res.ok) throw new Error("Processing failed");
-      await fetchTasks();
-      toast.success("Tasks extracted and added to Inbox!");
-    } catch {
-      toast.error("Failed to process. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const handleMoveTask = async (taskId: string, newStatus: TaskStatus) => {
     setTasks((prev) =>
@@ -136,7 +118,7 @@ export default function Home() {
 
       {/* Main */}
       <main className="p-5 flex flex-col gap-5">
-        <VoiceInput onProcess={handleProcess} isProcessing={isProcessing} />
+        <VoiceInput onBoardChanged={fetchTasks} />
 
         <KanbanBoard
           tasks={tasks}
