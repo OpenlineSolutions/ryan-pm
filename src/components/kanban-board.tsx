@@ -172,12 +172,6 @@ export function KanbanBoard({
                         {...provided.draggableProps}
                         {...provided.dragHandleProps}
                         className={`mb-2 ${snapshot.isDragging ? "cursor-grabbing" : "cursor-grab"}`}
-                        // Prevent drag from stealing button clicks
-                        onMouseDown={(e) => {
-                          if ((e.target as HTMLElement).closest("button")) {
-                            e.stopPropagation();
-                          }
-                        }}
                       >
                         <TaskCardContent
                           task={task}
