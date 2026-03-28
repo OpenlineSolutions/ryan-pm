@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -15,25 +15,11 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
-  const [micBlocked, setMicBlocked] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.permissions) {
-      navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
-        setMicBlocked(result.state === "denied");
-        result.onchange = () => setMicBlocked(result.state === "denied");
-      }).catch(() => {});
-    }
-  }, []);
-
   const startRecording = useCallback(async () => {
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        toast.error("Microphone not available. Use HTTPS or type your notes below.");
-        return;
-      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // Get Deepgram token from our API
@@ -49,7 +35,6 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
       socketRef.current = socket;
 
       socket.onopen = () => {
-        // Pick the best supported MIME type
         const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : MediaRecorder.isTypeSupported("audio/webm")
@@ -69,7 +54,7 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
           }
         };
 
-        mediaRecorder.start(250); // Send chunks every 250ms
+        mediaRecorder.start(250);
         setIsRecording(true);
       };
 
@@ -92,24 +77,14 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
       };
     } catch (err: any) {
       console.error("Microphone error:", err?.name, err?.message);
-      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-        toast.error("Microphone blocked. Click the lock icon in your browser's address bar to allow access, then refresh.");
-      } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
-        toast.error("No microphone found. Please connect a microphone and try again.");
-      } else if (err?.name === "NotReadableError") {
-        toast.error("Microphone is in use by another app. Close other apps and try again.");
-      } else {
-        toast.error("Could not access microphone. You can type or paste your notes below instead.");
-      }
+      toast.error("Could not access microphone. Please allow microphone access and try again.");
     }
   }, []);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream
-        .getTracks()
-        .forEach((track) => track.stop());
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
     }
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.close();
@@ -130,11 +105,6 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
 
   return (
     <Card className="p-6 border-border bg-card">
-      {micBlocked && (
-        <div className="mb-4 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-400">
-          <strong>Microphone blocked.</strong> Click the lock icon in your browser's address bar → set Microphone to <strong>Allow</strong> → refresh the page.
-        </div>
-      )}
       <div className="flex items-center gap-4 mb-4">
         <button
           onClick={isRecording ? stopRecording : startRecording}
