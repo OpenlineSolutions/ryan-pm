@@ -192,7 +192,7 @@ function DroppableColumn({
   const highlighted = isOver || dropIsOver;
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0">
+    <div className="flex flex-col flex-1 min-w-0">
       <div className="flex items-center gap-2 mb-3 shrink-0">
         <span className={`w-2 h-2 rounded-full shrink-0 ${COLUMN_DOT[col.key]}`} />
         <span className="text-sm font-medium text-stone-700">{col.label}</span>
@@ -201,7 +201,7 @@ function DroppableColumn({
 
       <div
         ref={setNodeRef}
-        className={`flex-1 rounded-lg p-2 transition-colors duration-100 overflow-y-auto ${
+        className={`rounded-lg p-2 transition-colors duration-100 ${
           highlighted ? "bg-blue-50 ring-1 ring-blue-300" : "bg-stone-100/70"
         }`}
         style={{ minHeight: 80 }}
@@ -274,7 +274,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
     >
       {/* Desktop */}
-      <div className="hidden md:flex flex-row gap-4 h-full">
+      <div className="hidden md:flex flex-row gap-4 items-start">
         {STATUS_COLUMNS.map((col) => (
           <DroppableColumn
             key={col.key}

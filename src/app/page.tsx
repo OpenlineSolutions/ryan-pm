@@ -106,9 +106,9 @@ export default function Home() {
   const activeTasks = tasks.filter((t) => t.status !== "done").length;
 
   return (
-    <div className="flex flex-col h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50">
       {/* Header */}
-      <header className="shrink-0 bg-white border-b border-stone-200 px-6 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-10 bg-white border-b border-stone-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-stone-900 flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,19 +135,17 @@ export default function Home() {
       <Separator />
 
       {/* Main */}
-      <main className="flex-1 flex flex-col min-h-0 p-5 gap-5">
+      <main className="p-5 flex flex-col gap-5">
         <VoiceInput onProcess={handleProcess} isProcessing={isProcessing} />
 
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <KanbanBoard
-            tasks={tasks}
-            projects={projects}
-            onMoveTask={handleMoveTask}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onEdit={(task) => console.log("Edit:", task)}
-          />
-        </div>
+        <KanbanBoard
+          tasks={tasks}
+          projects={projects}
+          onMoveTask={handleMoveTask}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onEdit={(task) => console.log("Edit:", task)}
+        />
       </main>
 
       <AiChat />
