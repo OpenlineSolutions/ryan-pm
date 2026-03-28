@@ -1,65 +1,190 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { VoiceInput } from "@/components/voice-input";
+import { KanbanBoard } from "@/components/kanban-board";
+import { AiChat } from "@/components/ai-chat";
+import { Task, Project, TaskStatus } from "@/lib/types";
+import { toast } from "sonner";
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
+      }
+    } catch {
+      console.error("Failed to fetch tasks");
+    }
+  }, []);
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects");
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data);
+      }
+    } catch {
+      console.error("Failed to fetch projects");
+    }
+  }, []);
+
+  useEffect(() => {
+    Promise.all([fetchTasks(), fetchProjects()]).finally(() =>
+      setIsLoading(false)
+    );
+  }, [fetchTasks, fetchProjects]);
+
+  const handleProcess = async (transcript: string) => {
+    setIsProcessing(true);
+    try {
+      const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
+      });
+
+      if (!res.ok) throw new Error("Processing failed");
+
+      await fetchTasks();
+      toast.success("Tasks extracted and added to Inbox!");
+    } catch {
+      toast.error("Failed to process. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleMoveTask = async (taskId: string, newStatus: TaskStatus) => {
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, status: newStatus, approved: newStatus !== "inbox" }
+          : t
+      )
+    );
+
+    try {
+      await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: taskId,
+          status: newStatus,
+          approved: newStatus !== "inbox",
+        }),
+      });
+    } catch {
+      fetchTasks(); // Revert on error
+      toast.error("Failed to move task");
+    }
+  };
+
+  const handleApprove = async (taskId: string) => {
+    await handleMoveTask(taskId, "todo");
+    toast.success("Task approved!");
+  };
+
+  const handleReject = async (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    try {
+      await fetch("/api/tasks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId }),
+      });
+      toast("Task rejected");
+    } catch {
+      fetchTasks();
+      toast.error("Failed to reject task");
+    }
+  };
+
+  const handleEdit = (task: Task) => {
+    // For POC, just log. Could open a dialog.
+    console.log("Edit task:", task);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin w-8 h-8 text-muted-foreground" viewBox="0 0 24 24">
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+              fill="none"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <p className="text-sm text-muted-foreground">Loading FlowBoard...</p>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-screen">
+      {/* Header */}
+      <header className="border-b border-border px-6 py-3 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-semibold text-foreground">FlowBoard</h1>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+            AI Project Manager
+          </span>
+        </div>
+        <div className="flex items-center gap-4">
+          {projects.map((p) => (
+            <div key={p.id} className="flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: p.color }}
+              />
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                {p.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 flex flex-col min-h-0 p-4 md:p-6 gap-4">
+        <VoiceInput onProcess={handleProcess} isProcessing={isProcessing} />
+        <KanbanBoard
+          tasks={tasks}
+          projects={projects}
+          onMoveTask={handleMoveTask}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onEdit={handleEdit}
+        />
       </main>
+
+      {/* AI Chat */}
+      <AiChat />
     </div>
   );
 }
