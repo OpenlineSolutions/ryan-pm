@@ -12,5 +12,5 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ token });
+  return NextResponse.json({ token: token.trim() });
 }
