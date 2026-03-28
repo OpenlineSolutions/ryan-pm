@@ -1,156 +1,65 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useDeepgram } from "@/hooks/use-deepgram";
 import { toast } from "sonner";
 
 interface VoiceInputProps {
   onBoardChanged: () => void;
 }
 
-const SILENCE_DELAY = 2500;
-
 export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
-  const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [interimText, setInterimText] = useState("");
   const [agentReply, setAgentReply] = useState("");
   const [textInput, setTextInput] = useState("");
+  const resetTranscriptRef = useRef<() => void>(() => {});
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const transcriptRef = useRef("");
-
-  const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-  };
-
-  const stopRecording = useCallback(() => {
-    clearSilenceTimer();
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-    }
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.close();
-    }
-    setIsRecording(false);
-    setInterimText("");
-  }, []);
-
-  const runAgent = useCallback(async (text: string) => {
-    if (!text.trim()) return;
-    setIsProcessing(true);
-    setAgentReply("");
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text }),
-      });
-      if (!res.ok) throw new Error("Agent failed");
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No reader");
-
-      const decoder = new TextDecoder();
-      let reply = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        reply += decoder.decode(value, { stream: true });
-        setAgentReply(reply);
-      }
-
-      setTranscript("");
-      transcriptRef.current = "";
-      onBoardChanged();
-    } catch {
-      toast.error("Something went wrong. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [onBoardChanged]);
-
-  const autoSubmit = useCallback(async () => {
-    stopRecording();
-    const text = transcriptRef.current.trim();
-    if (text) await runAgent(text);
-  }, [stopRecording, runAgent]);
-
-  const startRecording = useCallback(async () => {
-    if (isProcessing) return;
-    setAgentReply("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const tokenRes = await fetch("/api/deepgram-token");
-      if (!tokenRes.ok) throw new Error("Failed to get token");
-      const { token } = await tokenRes.json();
-
-      const socket = new WebSocket(
-        `wss://api.deepgram.com/v1/listen?model=nova-3&punctuate=true&smart_format=true`,
-        ["token", token]
-      );
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-
-        const mediaRecorder = new MediaRecorder(stream, {
-          ...(mimeType ? { mimeType } : {}),
+  const runAgent = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+      setIsProcessing(true);
+      setAgentReply("");
+      try {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: text }),
         });
-        mediaRecorderRef.current = mediaRecorder;
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-            socket.send(event.data);
-          }
-        };
-        mediaRecorder.start(250);
-        setIsRecording(true);
-      };
+        if (!res.ok) throw new Error("Agent failed");
 
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.channel?.alternatives?.[0]) {
-          const text = data.channel.alternatives[0].transcript;
-          if (data.is_final && text) {
-            const updated = transcriptRef.current
-              ? transcriptRef.current + " " + text
-              : text;
-            transcriptRef.current = updated;
-            setTranscript(updated);
-            setInterimText("");
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No reader");
 
-            clearSilenceTimer();
-            silenceTimerRef.current = setTimeout(() => {
-              autoSubmit();
-            }, SILENCE_DELAY);
-          } else if (text) {
-            setInterimText(text);
-          }
+        const decoder = new TextDecoder();
+        let reply = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          reply += decoder.decode(value, { stream: true });
+          setAgentReply(reply);
         }
-      };
 
-      socket.onerror = () => {
-        toast.error("Voice connection issue. Type below instead.");
-        stopRecording();
-      };
-    } catch {
-      toast.error("Microphone access denied. Allow it in your browser and try again.");
-    }
-  }, [isProcessing, stopRecording, autoSubmit]);
+        onBoardChanged();
+      } catch {
+        toast.error("Something went wrong. Please try again.");
+      } finally {
+        setIsProcessing(false);
+        resetTranscriptRef.current();
+      }
+    },
+    [onBoardChanged]
+  );
+
+  const { isRecording, transcript, interimText, startRecording, stopRecording, resetTranscript } =
+    useDeepgram({
+      silenceDelay: 2500,
+      onTranscript: runAgent,
+    });
+
+  // Keep ref current so runAgent always calls the latest resetTranscript
+  resetTranscriptRef.current = resetTranscript;
 
   const handleTextSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,7 +73,6 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
 
   return (
     <div className="flex flex-col items-center gap-6 py-8">
-
       {/* Mic button */}
       <div className="flex flex-col items-center gap-4">
         <div className="relative flex items-center justify-center">
@@ -194,7 +102,7 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
           </button>
         </div>
 
-        {/* Status */}
+        {/* Status line */}
         <div className="h-6 flex items-center justify-center">
           {isProcessing ? (
             <div className="flex items-center gap-2 text-sm text-stone-500">
@@ -202,7 +110,7 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Thinking...
+              Updating board...
             </div>
           ) : isRecording ? (
             <div className="flex items-center gap-2">
@@ -225,7 +133,7 @@ export function VoiceInput({ onBoardChanged }: VoiceInputProps) {
         </div>
       )}
 
-      {/* AI reply after processing */}
+      {/* Agent reply */}
       {agentReply && (
         <div className="w-full max-w-xl bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-start gap-3">
           <span className="text-emerald-500 mt-0.5 shrink-0">

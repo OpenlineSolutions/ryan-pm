@@ -1,6 +1,11 @@
 import { streamText, stepCountIs } from "ai";
 import { getDb } from "@/lib/db";
-import { z } from "zod";
+import {
+  makeSearchTasksTool,
+  makeMoveTaskTool,
+  makeDeleteTaskTool,
+  makeCreateTaskTool,
+} from "@/lib/agent-tools";
 
 export async function POST(req: Request) {
   const { transcript } = await req.json();
@@ -39,89 +44,53 @@ export async function POST(req: Request) {
 
   let tasksCreated = 0;
 
+  const createTool = makeCreateTaskTool(sql, projects as any, voiceLogId);
+  const originalExecute = createTool.execute;
+  const wrappedCreate = {
+    ...createTool,
+    execute: async (args: Parameters<typeof originalExecute>[0]) => {
+      const result = await originalExecute(args);
+      if ((result as any).success) tasksCreated++;
+      return result;
+    },
+  };
+
   const result = streamText({
     model: "anthropic/claude-sonnet-4.6" as any,
-    system: `You are a smart AI assistant for a voice-first project management tool. The user spoke something — figure out what they want and act on it.
+    system: `You are an AI assistant for a voice-first project management tool called FlowBoard.
 
-You can:
-- Create new tasks (action items the user mentioned)
-- Move existing tasks to a different column
-- Delete tasks
-- Do multiple things at once
+CRITICAL RULE: When the user mentions any task by name, ALWAYS call search_tasks FIRST to check if it already exists. If a matching task is found, move or update it — do NOT create a new one. Only call create_task for genuinely new work that has no match on the board.
 
-Known projects: ${projectNames}
+Decision flow:
+1. User mentions an existing task → search_tasks → then move_task or delete_task
+2. User describes brand-new work → search_tasks to confirm it's new → if not found, create_task
+3. When uncertain → search_tasks first
 
-Current board tasks (with IDs):
+Available tools (use in this order):
+1. search_tasks — ALWAYS call first when any task name is mentioned
+2. move_task — move a found task to inbox, todo, in_progress, or done
+3. create_task — only for genuinely new items not already on the board
+4. delete_task — remove a task
+
+Known projects: ${projectNames || "none yet"}
+
+Current board:
 ${taskContext || "No tasks yet."}
 
 Rules for creating tasks:
 - Only extract clear action items, not observations or opinions
-- Match to a known project or use "Uncategorized"
+- Match to a known project or leave as Uncategorized
 - Priority: high if urgent/deadline mentioned, low if vague, medium otherwise
 - Keep titles short and starting with a verb
 
-After taking all actions, reply with one short sentence confirming what you did.
-Examples: "Created 3 tasks and moved the standup to Done." / "Marked 2 tasks as complete." / "Added a new task for Joy Dental."`,
+After all actions, reply with one short sentence confirming what you did.
+Examples: "Moved 'Pairing CRM' to In Progress." / "Created 3 new tasks." / "Marked the standup as done."`,
     prompt: transcript,
     tools: {
-      create_task: {
-        description: "Create a new task in the Inbox",
-        inputSchema: z.object({
-          title: z.string().describe("Short, actionable task title starting with a verb"),
-          description: z.string().describe("Brief one-sentence description"),
-          project: z.string().describe("Project name from the known list, or 'Uncategorized'"),
-          priority: z.enum(["high", "medium", "low"]),
-        }),
-        execute: async ({ title, description, project, priority }) => {
-          try {
-            const matched = projects.find(
-              (p: any) =>
-                p.name.toLowerCase().includes(project.toLowerCase()) ||
-                project.toLowerCase().includes(p.name.toLowerCase())
-            );
-            await sql`
-              INSERT INTO tasks (title, description, project_id, priority, status, approved, voice_log_id)
-              VALUES (${title}, ${description}, ${matched?.id ?? null}, ${priority}, 'inbox', false, ${voiceLogId})
-            `;
-            tasksCreated++;
-            return { success: true, title };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
-        },
-      },
-      move_task: {
-        description: "Move an existing task to a different column",
-        inputSchema: z.object({
-          taskId: z.string().describe("The ID of the task"),
-          newStatus: z.enum(["inbox", "todo", "in_progress", "done"]),
-        }),
-        execute: async ({ taskId, newStatus }) => {
-          try {
-            await sql`
-              UPDATE tasks SET status = ${newStatus}, approved = ${newStatus !== "inbox"}
-              WHERE id = ${taskId}
-            `;
-            return { success: true };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
-        },
-      },
-      delete_task: {
-        description: "Delete a task from the board",
-        inputSchema: z.object({
-          taskId: z.string().describe("The ID of the task to delete"),
-        }),
-        execute: async ({ taskId }) => {
-          try {
-            await sql`DELETE FROM tasks WHERE id = ${taskId}`;
-            return { success: true };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
-        },
-      },
+      search_tasks: makeSearchTasksTool(sql),
+      create_task: wrappedCreate,
+      move_task: makeMoveTaskTool(sql),
+      delete_task: makeDeleteTaskTool(sql),
     },
     stopWhen: stepCountIs(10),
     onFinish: async () => {

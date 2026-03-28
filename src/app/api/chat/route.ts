@@ -1,6 +1,10 @@
 import { streamText, stepCountIs } from "ai";
 import { getDb } from "@/lib/db";
-import { z } from "zod";
+import {
+  makeSearchTasksTool,
+  makeMoveTaskTool,
+  makeDeleteTaskTool,
+} from "@/lib/agent-tools";
 
 export async function POST(req: Request) {
   const { message } = await req.json();
@@ -24,7 +28,6 @@ export async function POST(req: Request) {
     `,
   ]);
 
-  // Include IDs so the AI knows what to pass to tools
   const taskContext = tasks
     .map(
       (t: any) =>
@@ -41,58 +44,26 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: "anthropic/claude-sonnet-4.6" as any,
-    system: `You are an AI assistant for a project management tool called FlowBoard. You can answer questions AND take direct actions on the task board.
+    system: `You are an AI assistant for FlowBoard, a project management tool.
 
-Current Tasks (with IDs):
+CRITICAL RULE: When the user mentions a task by name, call search_tasks FIRST to find it before acting. Never guess a task ID.
+
+Decision flow:
+1. User mentions a task → search_tasks → then move_task or delete_task
+2. When uncertain → search_tasks first
+
+Current Tasks:
 ${taskContext || "No tasks yet."}
 
-Recent Voice Logs:
-${voiceContext || "No voice logs yet."}
+Recent Voice Commands:
+${voiceContext || "None yet."}
 
-When the user asks you to move, complete, or delete a task:
-1. Find the best matching task by title — fuzzy matching is fine
-2. Call the appropriate tool with the task's ID
-3. Confirm what you did in one short sentence
-
-Keep responses concise. If you take an action, lead with the confirmation.`,
+Keep responses concise. If you take an action, lead with a short confirmation sentence. If the user asks a question, answer it directly from the task context above.`,
     prompt: message,
     tools: {
-      move_task: {
-        description:
-          "Move a task to a different column. Use this to mark tasks as done, start them, approve them, etc.",
-        inputSchema: z.object({
-          taskId: z.string().describe("The ID of the task (from the task list above)"),
-          newStatus: z
-            .enum(["inbox", "todo", "in_progress", "done"])
-            .describe("The target column"),
-        }),
-        execute: async ({ taskId, newStatus }) => {
-          try {
-            await sql`
-              UPDATE tasks
-              SET status = ${newStatus}, approved = ${newStatus !== "inbox"}
-              WHERE id = ${taskId}
-            `;
-            return { success: true };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
-        },
-      },
-      delete_task: {
-        description: "Delete a task from the board entirely.",
-        inputSchema: z.object({
-          taskId: z.string().describe("The ID of the task to delete"),
-        }),
-        execute: async ({ taskId }) => {
-          try {
-            await sql`DELETE FROM tasks WHERE id = ${taskId}`;
-            return { success: true };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
-        },
-      },
+      search_tasks: makeSearchTasksTool(sql),
+      move_task: makeMoveTaskTool(sql),
+      delete_task: makeDeleteTaskTool(sql),
     },
     stopWhen: stepCountIs(5),
   });
