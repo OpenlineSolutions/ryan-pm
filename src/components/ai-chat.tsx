@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -142,7 +143,24 @@ export function AiChat() {
                   : "bg-stone-100 text-stone-800 border border-stone-200 rounded-bl-sm"
               }`}
             >
-              {msg.content || (
+              {msg.content ? (
+                msg.role === "assistant" ? (
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                      em: ({ children }) => <em className="italic">{children}</em>,
+                      ul: ({ children }) => <ul className="list-disc pl-4 mb-1">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal pl-4 mb-1">{children}</ol>,
+                      li: ({ children }) => <li className="mb-0.5">{children}</li>,
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                ) : (
+                  msg.content
+                )
+              ) : (
                 <span className="inline-flex gap-1 items-center py-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce" />
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce [animation-delay:150ms]" />
