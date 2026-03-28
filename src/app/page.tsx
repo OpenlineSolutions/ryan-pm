@@ -148,7 +148,7 @@ export default function Home() {
         />
       </main>
 
-      <AiChat />
+      <AiChat onBoardChanged={fetchTasks} />
     </div>
   );
 }

@@ -1,30 +1,43 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import ReactMarkdown from "react-markdown";
+import { toast } from "sonner";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
+interface AiChatProps {
+  onBoardChanged?: () => void;
+}
+
 const SUGGESTIONS = [
   "What's my highest priority?",
-  "Summarize my Joy Dental tasks",
-  "What did I talk about today?",
+  "Mark the team standup as done",
+  "Move all inbox tasks to To Do",
 ];
 
-export function AiChat() {
+const SILENCE_DELAY = 2000;
+
+export function AiChat({ onBoardChanged }: AiChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transcriptRef = useRef("");
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -36,20 +49,18 @@ export function AiChat() {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
   }, [isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
-    const userMessage = input.trim();
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
     setIsLoading(true);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
+        body: JSON.stringify({ message: text }),
       });
 
       if (!res.ok) throw new Error("Chat failed");
@@ -71,6 +82,9 @@ export function AiChat() {
           return updated;
         });
       }
+
+      // Refresh the board — AI may have moved/deleted tasks
+      onBoardChanged?.();
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -79,7 +93,87 @@ export function AiChat() {
     } finally {
       setIsLoading(false);
     }
+  }, [isLoading, onBoardChanged]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input.trim());
   };
+
+  // Voice for chat commands
+  const stopVoice = useCallback(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+    }
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.close();
+    }
+    setIsRecording(false);
+    transcriptRef.current = "";
+  }, []);
+
+  const startVoice = useCallback(async () => {
+    if (isLoading) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const tokenRes = await fetch("/api/deepgram-token");
+      if (!tokenRes.ok) throw new Error("Token failed");
+      const { token } = await tokenRes.json();
+
+      const socket = new WebSocket(
+        `wss://api.deepgram.com/v1/listen?model=nova-3&punctuate=true&smart_format=true`,
+        ["token", token]
+      );
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4";
+
+        const mr = new MediaRecorder(stream, { mimeType });
+        mediaRecorderRef.current = mr;
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+            socket.send(e.data);
+          }
+        };
+        mr.start(250);
+        setIsRecording(true);
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.channel?.alternatives?.[0]) {
+          const text = data.channel.alternatives[0].transcript;
+          if (data.is_final && text) {
+            transcriptRef.current = transcriptRef.current
+              ? transcriptRef.current + " " + text
+              : text;
+            setInput(transcriptRef.current);
+
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = setTimeout(() => {
+              const cmd = transcriptRef.current.trim();
+              stopVoice();
+              if (cmd) sendMessage(cmd);
+            }, SILENCE_DELAY);
+          }
+        }
+      };
+
+      socket.onerror = () => {
+        toast.error("Voice connection issue.");
+        stopVoice();
+      };
+    } catch {
+      toast.error("Microphone access denied.");
+    }
+  }, [isLoading, stopVoice, sendMessage]);
 
   if (!isOpen) {
     return (
@@ -96,12 +190,12 @@ export function AiChat() {
   }
 
   return (
-    <Card className="fixed bottom-5 right-5 w-[380px] max-h-[520px] flex flex-col z-50 shadow-xl border-stone-200">
-      <CardHeader className="p-4 pb-3">
+    <Card className="fixed bottom-5 right-5 w-[380px] max-h-[540px] flex flex-col z-50 shadow-xl border-stone-200">
+      <CardHeader className="p-4 pb-3 shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-stone-900">AI Assistant</p>
-            <p className="text-xs text-stone-500">Ask about your tasks and notes</p>
+            <p className="text-xs text-stone-500">Ask questions or give commands</p>
           </div>
           <Button
             variant="ghost"
@@ -118,14 +212,14 @@ export function AiChat() {
 
       <Separator />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[220px] max-h-[350px]">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[220px] max-h-[370px]">
         {messages.length === 0 && (
-          <div className="space-y-3">
-            <p className="text-xs text-stone-500 text-center">Try asking:</p>
+          <div className="space-y-2">
+            <p className="text-xs text-stone-400 text-center">Try asking or commanding:</p>
             {SUGGESTIONS.map((q) => (
               <button
                 key={q}
-                onClick={() => { setInput(q); inputRef.current?.focus(); }}
+                onClick={() => sendMessage(q)}
                 className="w-full text-left text-xs text-stone-600 hover:text-stone-900 px-3 py-2 rounded-lg bg-stone-50 hover:bg-stone-100 border border-stone-200 transition-colors"
               >
                 {q}
@@ -174,12 +268,33 @@ export function AiChat() {
 
       <Separator />
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 p-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 p-3 shrink-0">
+        {/* Voice button */}
+        <button
+          type="button"
+          onClick={isRecording ? stopVoice : startVoice}
+          disabled={isLoading}
+          className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
+            isRecording
+              ? "bg-red-500 hover:bg-red-600"
+              : "bg-stone-100 hover:bg-stone-200"
+          }`}
+          title={isRecording ? "Stop recording" : "Speak a command"}
+        >
+          {isRecording ? (
+            <span className="w-2.5 h-2.5 rounded-sm bg-white" />
+          ) : (
+            <svg className="w-4 h-4 text-stone-500" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            </svg>
+          )}
+        </button>
+
         <Input
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about your tasks..."
+          placeholder={isRecording ? "Listening..." : "Ask or command..."}
           disabled={isLoading}
           className="text-sm border-stone-200 focus-visible:ring-1 focus-visible:ring-blue-500"
         />
