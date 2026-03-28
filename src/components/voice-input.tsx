@@ -80,11 +80,17 @@ export function VoiceInput({ onProcess, isProcessing }: VoiceInputProps) {
         toast.error("Voice connection issue. You can type or paste text below.");
         stopRecording();
       };
-    } catch (err) {
-      console.error("Microphone error:", err);
-      toast.error(
-        "Could not access microphone. Please allow microphone access and try again."
-      );
+    } catch (err: any) {
+      console.error("Microphone error:", err?.name, err?.message);
+      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+        toast.error("Microphone blocked. Click the lock icon in your browser's address bar to allow access, then refresh.");
+      } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
+        toast.error("No microphone found. Please connect a microphone and try again.");
+      } else if (err?.name === "NotReadableError") {
+        toast.error("Microphone is in use by another app. Close other apps and try again.");
+      } else {
+        toast.error("Could not access microphone. You can type or paste your notes below instead.");
+      }
     }
   }, []);
 
