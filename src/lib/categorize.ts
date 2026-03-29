@@ -15,6 +15,56 @@ export type ExtractedItem = {
   due_date: string | null; // ISO date string
 };
 
+export async function extractFromTranscript(
+  transcript: string
+): Promise<ExtractedItem[]> {
+  console.log(
+    "[Categorize] Calling AI Gateway for transcript extraction..."
+  );
+
+  const { text } = await generateText({
+    model: "anthropic/claude-sonnet-4.6" as any,
+    system: `You are a project management AI that extracts action items from call transcripts and meeting notes.
+
+Your job: read the full transcript and pull out ONLY the concrete action items. Ignore pleasantries, discussions, opinions, and context. Focus on things that someone needs to DO.
+
+Item types:
+- "task": something that needs to be DONE by someone
+- "status_update": a decision or status change that was agreed on
+- "reminder": a follow-up or deadline that was mentioned
+
+Rules:
+- Be selective. A 30-minute call might only have 3-5 real action items. Don't over-extract.
+- Keep titles short (under 50 chars). Put context in description.
+- If someone is mentioned by name as the owner, set them as assignee.
+- Pick the best project: "Website Redesign", "Client Onboarding", "Internal Ops", or "Marketing". If unclear, use "Internal Ops".
+- Default priority is "Medium". Use "High" for things that sounded urgent or time-sensitive.
+- If a date or deadline was mentioned, convert to ISO format (YYYY-MM-DD). Otherwise null.
+
+Respond with ONLY a valid JSON array. No markdown, no explanation.`,
+    prompt: `Extract action items from this call transcript:\n\n${transcript}`,
+  });
+
+  console.log("[Categorize] Transcript AI response, length:", text.length);
+
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.log("[Categorize] No JSON array found in transcript response");
+      return [];
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as ExtractedItem[];
+  } catch {
+    console.error(
+      "[Categorize] Failed to parse transcript response:",
+      text.slice(0, 200)
+    );
+    return [];
+  }
+}
+
 export async function extractItems(message: string): Promise<ExtractedItem[]> {
   console.log("[Categorize] Calling AI Gateway for multi-item extraction...");
 
