@@ -1,73 +1,62 @@
 import { generateText } from "ai";
-import { z } from "zod";
 
-const CategorySchema = z.object({
-  is_task: z.boolean(),
-  title: z.string(),
-  description: z.string(),
-  project: z
-    .enum([
-      "Website Redesign",
-      "Client Onboarding",
-      "Internal Ops",
-      "Marketing",
-    ])
-    .nullable(),
-  is_urgent: z.boolean(),
-  list: z.enum(["inbox", "todo"]),
-});
+export type ExtractedItem = {
+  type: "task" | "status_update" | "reminder";
+  title: string;
+  description: string;
+  project:
+    | "Website Redesign"
+    | "Client Onboarding"
+    | "Internal Ops"
+    | "Marketing"
+    | null;
+  assignee: string | null;
+  priority: "Urgent" | "High" | "Medium" | "Low";
+  due_date: string | null; // ISO date string
+};
 
-export type Category = z.infer<typeof CategorySchema>;
+export async function extractItems(message: string): Promise<ExtractedItem[]> {
+  console.log("[Categorize] Calling AI Gateway for multi-item extraction...");
 
-export async function categorizeMessage(
-  message: string
-): Promise<Category | null> {
-  console.log("[Categorize] Calling AI Gateway...");
   const { text } = await generateText({
     model: "anthropic/claude-sonnet-4.6" as any,
-    system: `You are a project management AI that categorizes Slack messages for an agency.
+    system: `You are a project management AI that extracts actionable items from Slack messages.
 
-Your job: decide if a message contains an actionable task. If it does, extract the details.
+Your job: extract ALL actionable items from a single message. One message can contain multiple tasks, status updates, and reminders.
+
+Item types:
+- "task": something that needs to be DONE by someone (clear action required)
+- "status_update": someone reporting progress on existing work
+- "reminder": a time-based reminder or follow-up
 
 Rules:
-- Casual conversation, greetings, questions, and chit-chat are NOT tasks. Return is_task: false.
-- A task is something that needs to be DONE by someone. It has a clear action.
-- If the message mentions urgency (ASAP, urgent, deadline, ASAP, by EOD, critical), mark is_urgent: true.
-- Pick the best project category based on context. If unclear, use "Internal Ops".
-- Default list is "inbox" unless the task is very clear and specific, then use "todo".
-- Keep the title short (under 60 chars). Put extra context in the description.
+- Casual conversation, greetings, questions without action items, and chit-chat have NO items. Return an empty array [].
+- Keep titles short (under 50 chars). Put extra context in description (under 100 chars).
+- Pick the best project: "Website Redesign", "Client Onboarding", "Internal Ops", or "Marketing". If unclear, use "Internal Ops".
+- If someone is mentioned by name, set them as assignee.
+- Default priority is "Medium". Use "Urgent" for ASAP/critical/EOD. Use "High" for important but not urgent. Use "Low" for nice-to-have.
+- If a date is mentioned, convert to ISO format (YYYY-MM-DD). Otherwise null.
 
-Respond with ONLY valid JSON matching this shape:
-{
-  "is_task": boolean,
-  "title": "short task title",
-  "description": "context and details",
-  "project": "Website Redesign" | "Client Onboarding" | "Internal Ops" | "Marketing" | null,
-  "is_urgent": boolean,
-  "list": "inbox" | "todo"
-}
-
-If is_task is false, still return the full object but title/description can be empty strings and project can be null.`,
-    prompt: `Categorize this Slack message:\n\n"${message}"`,
+Respond with ONLY a valid JSON array. No markdown, no explanation.
+Example: [{"type":"task","title":"Update hero section","description":"Change the headline copy on homepage","project":"Website Redesign","assignee":"Ryan","priority":"High","due_date":"2026-04-01"}]
+Empty example: []`,
+    prompt: `Extract actionable items from this Slack message:\n\n"${message}"`,
   });
 
   console.log("[Categorize] AI response received, length:", text.length);
 
   try {
-    // Extract JSON from the response (handle markdown code blocks)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.error("[Categorize] No JSON found in response:", text.slice(0, 200));
-      return null;
+      console.log("[Categorize] No JSON array found, treating as non-actionable");
+      return [];
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    const result = CategorySchema.parse(parsed);
-
-    if (!result.is_task) return null;
-    return result;
+    if (!Array.isArray(parsed)) return [];
+    return parsed as ExtractedItem[];
   } catch {
-    console.error("Failed to parse AI categorization:", text);
-    return null;
+    console.error("[Categorize] Failed to parse AI response:", text.slice(0, 200));
+    return [];
   }
 }

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { verifySlackRequest } from "@/lib/slack";
-import { categorizeMessage } from "@/lib/categorize";
-import { createCard } from "@/lib/trello";
+import { extractItems, ExtractedItem } from "@/lib/categorize";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -65,46 +64,119 @@ async function processMessage(messageText: string, channel: string) {
   try {
     console.log(`[SlackBot] Processing message: "${messageText.slice(0, 100)}"`);
 
-    const category = await categorizeMessage(messageText);
+    const items = await extractItems(messageText);
 
-    if (!category) {
-      console.log("[SlackBot] Not a task, skipping.");
+    if (items.length === 0) {
+      console.log("[SlackBot] No actionable items found, skipping.");
       return;
     }
 
-    console.log("[SlackBot] Categorized as task:", JSON.stringify(category));
+    console.log(`[SlackBot] Found ${items.length} items`);
 
-    const card = await createCard({
-      title: category.title,
-      description: category.description,
-      list: category.list,
-      project: category.project,
-      isUrgent: category.is_urgent,
+    // Build Block Kit interactive message
+    const blocks = buildInteractiveBlocks(items);
+
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    if (!slackToken) {
+      console.error("[SlackBot] Missing SLACK_BOT_TOKEN");
+      return;
+    }
+
+    const res = await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${slackToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        channel,
+        text: `I found ${items.length} item(s) in your message.`,
+        blocks,
+      }),
     });
 
-    console.log(`[SlackBot] Created Trello card: ${card.shortUrl}`);
-
-    // Post a confirmation back to Slack
-    const slackToken = process.env.SLACK_BOT_TOKEN;
-    if (slackToken) {
-      const projectLabel = category.project ? ` [${category.project}]` : "";
-      const urgentLabel = category.is_urgent ? " :rotating_light:" : "";
-      const confirmMsg = `Task created${urgentLabel}${projectLabel}: *${category.title}*\n${card.shortUrl}`;
-
-      await fetch("https://slack.com/api/chat.postMessage", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${slackToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          channel,
-          text: confirmMsg,
-          unfurl_links: false,
-        }),
-      });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error("[SlackBot] Failed to post message:", data.error);
     }
   } catch (err) {
     console.error("[SlackBot] Error processing message:", err);
   }
+}
+
+function buildInteractiveBlocks(items: ExtractedItem[]) {
+  const checkboxOptions = items.map((item, i) => {
+    const meta = [
+      item.priority,
+      item.project || "No project",
+      item.assignee ? `@${item.assignee}` : null,
+      item.due_date || null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    return {
+      text: {
+        type: "mrkdwn" as const,
+        text: `*${item.title}*\n${meta}`,
+      },
+      value: String(i),
+    };
+  });
+
+  // Encode items in the button value (keep descriptions short to stay under 2000 char limit)
+  const itemsPayload = JSON.stringify(
+    items.map((item) => ({
+      type: item.type,
+      title: item.title,
+      description: item.description.slice(0, 80),
+      project: item.project,
+      assignee: item.assignee,
+      priority: item.priority,
+      due_date: item.due_date,
+    }))
+  );
+
+  const blocks: any[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:clipboard: *I found ${items.length} item(s) in your message:*`,
+      },
+    },
+    {
+      type: "actions",
+      block_id: "task_checkboxes",
+      elements: [
+        {
+          type: "checkboxes",
+          action_id: "select_tasks",
+          options: checkboxOptions,
+          initial_options: checkboxOptions, // All selected by default
+        },
+      ],
+    },
+    {
+      type: "actions",
+      block_id: "task_actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Add Selected" },
+          style: "primary",
+          action_id: "add_selected",
+          value: itemsPayload,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Skip All" },
+          action_id: "skip_all",
+          value: "skip",
+        },
+      ],
+    },
+  ];
+
+  return blocks;
 }
