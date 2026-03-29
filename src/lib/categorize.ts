@@ -5,10 +5,12 @@ export type ExtractedItem = {
   title: string;
   description: string;
   project:
-    | "Website Redesign"
-    | "Client Onboarding"
-    | "Internal Ops"
-    | "Marketing"
+    | "McDonalds"
+    | "Burger King"
+    | "In-N-Out"
+    | "Chick-fil-A"
+    | "Chipotle"
+    | "Internal"
     | null;
   assignee: string | null;
   priority: "Urgent" | "High" | "Medium" | "Low";
@@ -37,7 +39,7 @@ Rules:
 - Be selective. A 30-minute call might only have 3-5 real action items. Don't over-extract.
 - Keep titles short (under 50 chars). Put context in description.
 - If someone is mentioned by name as the owner, set them as assignee.
-- Pick the best project: "Website Redesign", "Client Onboarding", "Internal Ops", or "Marketing". If unclear, use "Internal Ops".
+- Pick the best project: "McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", or "Internal". If unclear, use "Internal Ops".
 - Default priority is "Medium". Use "High" for things that sounded urgent or time-sensitive.
 - If a date or deadline was mentioned, convert to ISO format (YYYY-MM-DD). Otherwise null.
 
@@ -82,7 +84,7 @@ Item types:
 Rules:
 - Casual conversation, greetings, questions without action items, and chit-chat have NO items. Return an empty array [].
 - Keep titles short (under 50 chars). Put extra context in description (under 100 chars).
-- Pick the best project: "Website Redesign", "Client Onboarding", "Internal Ops", or "Marketing". If unclear, use "Internal Ops".
+- Pick the best project: "McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", or "Internal". If unclear, use "Internal Ops".
 - If someone is mentioned by name, set them as assignee.
 - Default priority is "Medium". Use "Urgent" for ASAP/critical/EOD. Use "High" for important but not urgent. Use "Low" for nice-to-have.
 - If a date is mentioned, convert to ISO format (YYYY-MM-DD). Otherwise null.
