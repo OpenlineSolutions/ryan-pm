@@ -87,7 +87,7 @@ Rules:
 - Pick the best project: "McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", or "Internal". If unclear, use "Internal Ops".
 - If someone is mentioned by name, set them as assignee.
 - Default priority is "Medium". Use "Urgent" for ASAP/critical/EOD. Use "High" for important but not urgent. Use "Low" for nice-to-have.
-- If a date is mentioned, convert to ISO format (YYYY-MM-DD). Otherwise null.
+- Today's date is ${new Date().toISOString().split("T")[0]}. Use this to calculate relative dates like "tomorrow", "next Friday", "end of week", etc. Always return dates in ISO format (YYYY-MM-DD). If no date is mentioned, return null.
 
 Respond with ONLY a valid JSON array. No markdown, no explanation.
 Example: [{"type":"task","title":"Update hero section","description":"Change the headline copy on homepage","project":"Website Redesign","assignee":"Ryan","priority":"High","due_date":"2026-04-01"}]

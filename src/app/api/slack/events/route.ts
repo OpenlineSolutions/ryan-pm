@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { verifySlackRequest } from "@/lib/slack";
 import { extractItems, ExtractedItem } from "@/lib/categorize";
+import { createTask } from "@/lib/notion-tasks";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -49,15 +50,76 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Check for @PM prefix (direct create, no approval)
+    const botUserId = "U0APDKU0DPV";
+    const pmPattern = new RegExp(`^<@${botUserId}>\\s*`, "i");
+    const isDirect = pmPattern.test(messageText);
+    const cleanText = isDirect
+      ? messageText.replace(pmPattern, "").trim()
+      : messageText;
+
+    if (!cleanText) {
+      return NextResponse.json({ ok: true });
+    }
+
     // Use Next.js after() to process in background after response is sent
     after(async () => {
-      await processMessage(messageText, event.channel);
+      if (isDirect) {
+        await directCreate(cleanText, event.channel);
+      } else {
+        await processMessage(cleanText, event.channel);
+      }
     });
 
     return NextResponse.json({ ok: true });
   }
 
   return NextResponse.json({ ok: true });
+}
+
+async function directCreate(messageText: string, channel: string) {
+  try {
+    console.log(`[SlackBot] Direct create: "${messageText.slice(0, 100)}"`);
+
+    const items = await extractItems(messageText);
+    if (items.length === 0) {
+      return;
+    }
+
+    const created: string[] = [];
+    for (const item of items) {
+      const result = await createTask({
+        title: item.title,
+        status: "Inbox",
+        project: item.project,
+        priority: item.priority,
+        assignee: item.assignee,
+        dueDate: item.due_date,
+        source: "Slack",
+        notes: item.description,
+      });
+      created.push(`<${result.url}|${item.title}>`);
+    }
+
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    if (slackToken) {
+      const summary = created.join("\n");
+      await fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${slackToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel,
+          text: `Added ${created.length} task${created.length === 1 ? "" : "s"}:\n${summary}`,
+          unfurl_links: false,
+        }),
+      });
+    }
+  } catch (err) {
+    console.error("[SlackBot] Direct create error:", err);
+  }
 }
 
 async function processMessage(messageText: string, channel: string) {
