@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { verifySlackRequest } from "@/lib/slack";
 import { categorizeMessage } from "@/lib/categorize";
 import { createCard } from "@/lib/trello";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const body = JSON.parse(rawBody);
+
+  let body: any;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    console.error("Failed to parse request body:", rawBody.slice(0, 200));
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
   // Handle Slack URL verification challenge
   if (body.type === "url_verification") {
@@ -24,6 +32,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!isValid) {
+    console.error("Invalid Slack signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -41,19 +50,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Respond to Slack immediately (3 second timeout)
-    // Process in the background
-    const processingPromise = processMessage(messageText, event.channel);
-
-    // Use waitUntil if available (Vercel), otherwise just fire and forget
-    if (typeof globalThis !== "undefined" && "waitUntil" in globalThis) {
-      // @ts-ignore
-      globalThis.waitUntil(processingPromise);
-    } else {
-      processingPromise.catch((err) =>
-        console.error("Error processing message:", err)
-      );
-    }
+    // Use Next.js after() to process in background after response is sent
+    after(async () => {
+      await processMessage(messageText, event.channel);
+    });
 
     return NextResponse.json({ ok: true });
   }
@@ -63,16 +63,16 @@ export async function POST(req: NextRequest) {
 
 async function processMessage(messageText: string, channel: string) {
   try {
-    console.log(`Processing message: "${messageText}"`);
+    console.log(`[SlackBot] Processing message: "${messageText.slice(0, 100)}"`);
 
     const category = await categorizeMessage(messageText);
 
     if (!category) {
-      console.log("Message not categorized as a task, skipping.");
+      console.log("[SlackBot] Not a task, skipping.");
       return;
     }
 
-    console.log("Categorized as task:", category);
+    console.log("[SlackBot] Categorized as task:", JSON.stringify(category));
 
     const card = await createCard({
       title: category.title,
@@ -82,7 +82,7 @@ async function processMessage(messageText: string, channel: string) {
       isUrgent: category.is_urgent,
     });
 
-    console.log(`Created Trello card: ${card.shortUrl}`);
+    console.log(`[SlackBot] Created Trello card: ${card.shortUrl}`);
 
     // Post a confirmation back to Slack
     const slackToken = process.env.SLACK_BOT_TOKEN;
@@ -105,6 +105,6 @@ async function processMessage(messageText: string, channel: string) {
       });
     }
   } catch (err) {
-    console.error("Error processing Slack message:", err);
+    console.error("[SlackBot] Error processing message:", err);
   }
 }

@@ -22,6 +22,7 @@ export type Category = z.infer<typeof CategorySchema>;
 export async function categorizeMessage(
   message: string
 ): Promise<Category | null> {
+  console.log("[Categorize] Calling AI Gateway...");
   const { text } = await generateText({
     model: "anthropic/claude-sonnet-4.6" as any,
     system: `You are a project management AI that categorizes Slack messages for an agency.
@@ -50,10 +51,15 @@ If is_task is false, still return the full object but title/description can be e
     prompt: `Categorize this Slack message:\n\n"${message}"`,
   });
 
+  console.log("[Categorize] AI response received, length:", text.length);
+
   try {
     // Extract JSON from the response (handle markdown code blocks)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch) {
+      console.error("[Categorize] No JSON found in response:", text.slice(0, 200));
+      return null;
+    }
 
     const parsed = JSON.parse(jsonMatch[0]);
     const result = CategorySchema.parse(parsed);
