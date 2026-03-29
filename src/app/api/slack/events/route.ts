@@ -129,7 +129,6 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
 
   // Compact checkboxes: emoji + title + metadata on one line
   const checkboxOptions = items.map((item, i) => {
-    const emoji = getPriorityEmoji(item.priority);
     const parts = [
       item.project ? `\`${item.project}\`` : null,
       item.assignee || null,
@@ -139,7 +138,7 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
     return {
       text: {
         type: "mrkdwn" as const,
-        text: `${emoji}  *${item.title}*\n      ${parts}`,
+        text: `*${item.title}*\n${parts}`,
       },
       value: String(i),
     };
