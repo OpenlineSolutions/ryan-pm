@@ -71,7 +71,7 @@ export async function createTask(input: CreateTaskInput): Promise<{ id: string; 
     };
   }
 
-  const res = await fetch("https://api.notion.so/v1/pages", {
+  const res = await fetch("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: NOTION_HEADERS,
     body: JSON.stringify({
@@ -130,7 +130,7 @@ export async function queryTasks(filters?: {
   }
 
   const res = await fetch(
-    `https://api.notion.so/v1/databases/${NOTION_DATABASE_ID}/query`,
+    `https://api.notion.com/v1/databases/${NOTION_DATABASE_ID}/query`,
     {
       method: "POST",
       headers: NOTION_HEADERS,
