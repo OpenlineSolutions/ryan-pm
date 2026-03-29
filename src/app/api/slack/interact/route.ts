@@ -56,16 +56,25 @@ export async function POST(req: NextRequest) {
       // Get the original items data from the button value
       const allItems: ExtractedItem[] = JSON.parse(action.value);
 
-      // Read any dropdown overrides from the state
       const stateValues = payload.state?.values || {};
 
-      // Create tasks in Notion for ALL items (with any edits applied)
+      // Check if checkboxes exist (compact view) to filter selected items
+      const checkboxState =
+        stateValues?.task_checkboxes?.select_tasks?.selected_options;
+      const selectedIndices = checkboxState
+        ? new Set(checkboxState.map((opt: any) => parseInt(opt.value)))
+        : null; // null means all selected (edit view has no checkboxes)
+
+      // Create tasks in Notion for selected items (with any dropdown edits)
       const created: string[] = [];
       for (let i = 0; i < allItems.length; i++) {
+        // Skip unselected items if checkboxes were present
+        if (selectedIndices && !selectedIndices.has(i)) continue;
+
         const item = allItems[i];
         const itemState = stateValues[`item_${i}`] || {};
 
-        // Apply dropdown overrides if the user changed them
+        // Apply dropdown overrides if user changed them (edit view)
         const project =
           itemState[`project_${i}`]?.selected_option?.value || item.project;
         const assignee =

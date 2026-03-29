@@ -127,23 +127,36 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
     }))
   );
 
-  // Compact list: one line per item
-  const itemLines = items.map((item, i) => {
+  // Compact checkboxes: emoji + title + metadata on one line
+  const checkboxOptions = items.map((item, i) => {
     const emoji = getPriorityEmoji(item.priority);
-    const project = item.project ? `\`${item.project}\`` : "";
-    const assignee = item.assignee ? `${item.assignee}` : "";
-    const due = item.due_date ? `${item.due_date}` : "";
-    const parts = [project, assignee, due].filter(Boolean).join("  ·  ");
-    return `${emoji}  *${item.title}*\n      ${parts}`;
-  }).join("\n\n");
+    const parts = [
+      item.project ? `\`${item.project}\`` : null,
+      item.assignee || null,
+      item.due_date || null,
+    ].filter(Boolean).join("  ·  ");
+
+    return {
+      text: {
+        type: "mrkdwn" as const,
+        text: `${emoji}  *${item.title}*\n      ${parts}`,
+      },
+      value: String(i),
+    };
+  });
 
   return [
     {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: itemLines,
-      },
+      type: "actions",
+      block_id: "task_checkboxes",
+      elements: [
+        {
+          type: "checkboxes",
+          action_id: "select_tasks",
+          options: checkboxOptions,
+          initial_options: checkboxOptions, // all selected by default
+        },
+      ],
     },
     {
       type: "actions",
@@ -164,7 +177,7 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
         },
         {
           type: "button",
-          text: { type: "plain_text", text: "Skip" },
+          text: { type: "plain_text", text: "Skip All" },
           action_id: "skip_all",
           value: "skip",
         },
