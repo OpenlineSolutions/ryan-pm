@@ -53,46 +53,45 @@ export async function POST(req: NextRequest) {
 
   if (actionId === "add_selected") {
     try {
-      // Get the full items data from the button value
+      // Get the original items data from the button value
       const allItems: ExtractedItem[] = JSON.parse(action.value);
 
-      // Get selected checkbox indices from the state
-      const checkboxState =
-        payload.state?.values?.task_checkboxes?.select_tasks?.selected_options || [];
-      const selectedIndices = checkboxState.map((opt: any) => parseInt(opt.value));
+      // Read any dropdown overrides from the state
+      const stateValues = payload.state?.values || {};
 
-      if (selectedIndices.length === 0) {
-        await updateOriginalMessage(
-          responseUrl,
-          ":warning: No items were selected. Nothing created."
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      // Create tasks in Notion for selected items
+      // Create tasks in Notion for ALL items (with any edits applied)
       const created: string[] = [];
-      for (const idx of selectedIndices) {
-        const item = allItems[idx];
-        if (!item) continue;
+      for (let i = 0; i < allItems.length; i++) {
+        const item = allItems[i];
+        const itemState = stateValues[`item_${i}`] || {};
+
+        // Apply dropdown overrides if the user changed them
+        const project =
+          itemState[`project_${i}`]?.selected_option?.value || item.project;
+        const assignee =
+          itemState[`assignee_${i}`]?.selected_option?.value || item.assignee;
+        const priority =
+          itemState[`priority_${i}`]?.selected_option?.value || item.priority;
 
         const result = await createTask({
           title: item.title,
           status: "Inbox",
-          project: item.project,
-          priority: item.priority,
-          assignee: item.assignee,
+          project: project === "Internal" ? null : project,
+          priority,
+          assignee: assignee === "Unassigned" ? null : assignee,
           dueDate: item.due_date,
           source: "Slack",
           notes: item.description,
         });
 
-        created.push(`<${result.url}|${item.title}>`);
+        const projectTag = project ? ` \`${project}\`` : "";
+        created.push(`${projectTag}  <${result.url}|${item.title}>`);
       }
 
-      const summary = created.map((link) => `- ${link}`).join("\n");
+      const summary = created.map((link) => `${link}`).join("\n");
       await updateOriginalMessage(
         responseUrl,
-        `:white_check_mark: Created ${created.length} task(s) in Notion:\n${summary}`
+        `:white_check_mark: *Added ${created.length} task${created.length === 1 ? "" : "s"} to Notion:*\n\n${summary}`
       );
     } catch (err: any) {
       const errMsg = err?.message || String(err);
