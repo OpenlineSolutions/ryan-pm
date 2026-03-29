@@ -104,10 +104,6 @@ async function processMessage(messageText: string, channel: string) {
   }
 }
 
-const PROJECTS = ["McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", "Internal"];
-const PRIORITIES = ["Urgent", "High", "Medium", "Low"];
-const TEAM = ["Ryan", "Sarah", "Jake", "Mike", "Unassigned"];
-
 function getPriorityEmoji(priority: string): string {
   switch (priority) {
     case "Urgent": return ":rotating_light:";
@@ -119,7 +115,6 @@ function getPriorityEmoji(priority: string): string {
 }
 
 function buildInteractiveBlocks(items: ExtractedItem[]) {
-  // Store all items data in the Add All button
   const itemsPayload = JSON.stringify(
     items.map((item) => ({
       type: item.type,
@@ -132,108 +127,48 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
     }))
   );
 
-  const blocks: any[] = [
+  // Compact list: one line per item
+  const itemLines = items.map((item, i) => {
+    const emoji = getPriorityEmoji(item.priority);
+    const project = item.project ? `\`${item.project}\`` : "";
+    const assignee = item.assignee ? `${item.assignee}` : "";
+    const due = item.due_date ? `${item.due_date}` : "";
+    const parts = [project, assignee, due].filter(Boolean).join("  ·  ");
+    return `${emoji}  *${item.title}*\n      ${parts}`;
+  }).join("\n\n");
+
+  return [
     {
-      type: "header",
+      type: "section",
       text: {
-        type: "plain_text",
-        text: `${items.length} action item${items.length === 1 ? "" : "s"} found`,
+        type: "mrkdwn",
+        text: itemLines,
       },
     },
     {
-      type: "context",
+      type: "actions",
+      block_id: "task_actions",
       elements: [
         {
-          type: "mrkdwn",
-          text: "Review and adjust before adding. Change project, assignee, or priority with the dropdowns.",
+          type: "button",
+          text: { type: "plain_text", text: "Approve" },
+          style: "primary",
+          action_id: "add_selected",
+          value: itemsPayload,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Edit" },
+          action_id: "edit_tasks",
+          value: itemsPayload,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Skip" },
+          action_id: "skip_all",
+          value: "skip",
         },
       ],
     },
   ];
-
-  // Each item gets its own card: title section + dropdowns row
-  items.forEach((item, i) => {
-    const priorityEmoji = getPriorityEmoji(item.priority);
-    const dueStr = item.due_date ? `  :calendar: ${item.due_date}` : "";
-
-    blocks.push({ type: "divider" });
-
-    // Task title and description
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `${priorityEmoji}  *${item.title}*${dueStr}${item.description ? `\n_${item.description.slice(0, 80)}_` : ""}`,
-      },
-    });
-
-    // Editable dropdowns for this item
-    blocks.push({
-      type: "actions",
-      block_id: `item_${i}`,
-      elements: [
-        {
-          type: "static_select",
-          action_id: `project_${i}`,
-          placeholder: { type: "plain_text", text: "Project" },
-          initial_option: item.project
-            ? { text: { type: "plain_text", text: item.project }, value: item.project }
-            : { text: { type: "plain_text", text: "Internal" }, value: "Internal" },
-          options: PROJECTS.map((p) => ({
-            text: { type: "plain_text", text: p },
-            value: p,
-          })),
-        },
-        {
-          type: "static_select",
-          action_id: `assignee_${i}`,
-          placeholder: { type: "plain_text", text: "Assignee" },
-          initial_option: item.assignee && TEAM.includes(item.assignee)
-            ? { text: { type: "plain_text", text: item.assignee }, value: item.assignee }
-            : { text: { type: "plain_text", text: item.assignee || "Unassigned" }, value: item.assignee || "Unassigned" },
-          options: TEAM.map((t) => ({
-            text: { type: "plain_text", text: t },
-            value: t,
-          })),
-        },
-        {
-          type: "static_select",
-          action_id: `priority_${i}`,
-          placeholder: { type: "plain_text", text: "Priority" },
-          initial_option: {
-            text: { type: "plain_text", text: item.priority },
-            value: item.priority,
-          },
-          options: PRIORITIES.map((p) => ({
-            text: { type: "plain_text", text: p },
-            value: p,
-          })),
-        },
-      ],
-    });
-  });
-
-  // Final action buttons
-  blocks.push({ type: "divider" });
-  blocks.push({
-    type: "actions",
-    block_id: "task_actions",
-    elements: [
-      {
-        type: "button",
-        text: { type: "plain_text", text: "Add All to Notion" },
-        style: "primary",
-        action_id: "add_selected",
-        value: itemsPayload,
-      },
-      {
-        type: "button",
-        text: { type: "plain_text", text: "Skip All" },
-        action_id: "skip_all",
-        value: "skip",
-      },
-    ],
-  });
-
-  return blocks;
 }

@@ -106,8 +106,143 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // For checkbox toggles (select_tasks), just acknowledge
+  if (actionId === "edit_tasks") {
+    try {
+      const allItems: ExtractedItem[] = JSON.parse(action.value);
+      const editBlocks = buildEditBlocks(allItems);
+      await fetch(responseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replace_original: "true",
+          text: "Editing tasks...",
+          blocks: editBlocks,
+        }),
+      });
+    } catch (err: any) {
+      console.error("[Interact] Error expanding edit view:", err?.message);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // For dropdown changes, just acknowledge (state is tracked by Slack)
   return NextResponse.json({ ok: true });
+}
+
+const PROJECTS = ["McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", "Internal"];
+const PRIORITIES = ["Urgent", "High", "Medium", "Low"];
+const TEAM = ["Ryan", "Sarah", "Jake", "Mike", "Unassigned"];
+
+function getPriorityEmoji(priority: string): string {
+  switch (priority) {
+    case "Urgent": return ":rotating_light:";
+    case "High": return ":red_circle:";
+    case "Medium": return ":large_orange_circle:";
+    case "Low": return ":white_circle:";
+    default: return ":white_circle:";
+  }
+}
+
+function buildEditBlocks(items: ExtractedItem[]) {
+  const itemsPayload = JSON.stringify(
+    items.map((item) => ({
+      type: item.type,
+      title: item.title,
+      description: item.description?.slice(0, 80) || "",
+      project: item.project,
+      assignee: item.assignee,
+      priority: item.priority,
+      due_date: item.due_date,
+    }))
+  );
+
+  const blocks: any[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:pencil2: *Editing ${items.length} item${items.length === 1 ? "" : "s"}:*`,
+      },
+    },
+  ];
+
+  items.forEach((item, i) => {
+    const emoji = getPriorityEmoji(item.priority);
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${emoji}  *${item.title}*`,
+      },
+    });
+    blocks.push({
+      type: "actions",
+      block_id: `item_${i}`,
+      elements: [
+        {
+          type: "static_select",
+          action_id: `project_${i}`,
+          placeholder: { type: "plain_text", text: "Project" },
+          initial_option: item.project
+            ? { text: { type: "plain_text", text: item.project }, value: item.project }
+            : { text: { type: "plain_text", text: "Internal" }, value: "Internal" },
+          options: PROJECTS.map((p) => ({
+            text: { type: "plain_text", text: p },
+            value: p,
+          })),
+        },
+        {
+          type: "static_select",
+          action_id: `assignee_${i}`,
+          placeholder: { type: "plain_text", text: "Assignee" },
+          initial_option: item.assignee && TEAM.includes(item.assignee)
+            ? { text: { type: "plain_text", text: item.assignee }, value: item.assignee }
+            : { text: { type: "plain_text", text: "Unassigned" }, value: "Unassigned" },
+          options: TEAM.map((t) => ({
+            text: { type: "plain_text", text: t },
+            value: t,
+          })),
+        },
+        {
+          type: "static_select",
+          action_id: `priority_${i}`,
+          placeholder: { type: "plain_text", text: "Priority" },
+          initial_option: {
+            text: { type: "plain_text", text: item.priority },
+            value: item.priority,
+          },
+          options: PRIORITIES.map((p) => ({
+            text: { type: "plain_text", text: p },
+            value: p,
+          })),
+        },
+      ],
+    });
+  });
+
+  blocks.push({ type: "divider" });
+  blocks.push({
+    type: "actions",
+    block_id: "task_actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Save All to Notion" },
+        style: "primary",
+        action_id: "add_selected",
+        value: itemsPayload,
+      },
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Cancel" },
+        action_id: "skip_all",
+        value: "skip",
+      },
+    ],
+  });
+
+  return blocks;
 }
 
 async function updateOriginalMessage(responseUrl: string, text: string) {
