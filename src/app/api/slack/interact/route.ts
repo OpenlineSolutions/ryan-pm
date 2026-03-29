@@ -94,11 +94,13 @@ export async function POST(req: NextRequest) {
         responseUrl,
         `:white_check_mark: Created ${created.length} task(s) in Notion:\n${summary}`
       );
-    } catch (err) {
-      console.error("[Interact] Error creating tasks:", err);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      console.error("[Interact] Error creating tasks:", errMsg);
+      console.error("[Interact] Full error:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
       await updateOriginalMessage(
         responseUrl,
-        ":x: Failed to create tasks. Check the logs."
+        `:x: Failed to create tasks: ${errMsg.slice(0, 200)}`
       );
     }
 
