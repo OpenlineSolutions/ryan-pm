@@ -118,21 +118,34 @@ async function processTranscript(
   }
 }
 
+function getPriorityEmoji(priority: string): string {
+  switch (priority) {
+    case "Urgent": return ":rotating_light:";
+    case "High": return ":red_circle:";
+    case "Medium": return ":large_orange_circle:";
+    case "Low": return ":white_circle:";
+    default: return ":white_circle:";
+  }
+}
+
 function buildInteractiveBlocks(items: ExtractedItem[]) {
   const checkboxOptions = items.map((item, i) => {
-    const meta = [
-      item.priority,
-      item.project || "No project",
-      item.assignee ? `@${item.assignee}` : null,
-      item.due_date || null,
-    ]
-      .filter(Boolean)
-      .join(" | ");
+    const priorityEmoji = getPriorityEmoji(item.priority);
+    const project = item.project ? `\`${item.project}\`` : "";
+    const assignee = item.assignee ? `:bust_in_silhouette: ${item.assignee}` : "";
+    const dueDate = item.due_date ? `:calendar: ${item.due_date}` : "";
+
+    const metaParts = [project, assignee, dueDate].filter(Boolean).join("  ");
+    const description = item.description ? `\n      _${item.description.slice(0, 60)}_` : "";
 
     return {
       text: {
         type: "mrkdwn" as const,
-        text: `*${item.title}*\n${meta}`,
+        text: `${priorityEmoji}  *${item.title}*${description}\n      ${metaParts}`,
+      },
+      description: {
+        type: "mrkdwn" as const,
+        text: `${item.priority} priority`,
       },
       value: String(i),
     };
@@ -152,12 +165,22 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
 
   return [
     {
-      type: "section",
+      type: "header",
       text: {
-        type: "mrkdwn",
-        text: `:phone: *Call Summary -- ${items.length} action item(s) found:*`,
+        type: "plain_text",
+        text: `:telephone_receiver: Call Summary - ${items.length} action item${items.length === 1 ? "" : "s"} found`,
       },
     },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "Select the items you want to add to Notion, then tap *Add Selected*.",
+        },
+      ],
+    },
+    { type: "divider" },
     {
       type: "actions",
       block_id: "task_checkboxes",
@@ -170,13 +193,14 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
         },
       ],
     },
+    { type: "divider" },
     {
       type: "actions",
       block_id: "task_actions",
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Add Selected" },
+          text: { type: "plain_text", text: ":white_check_mark:  Add Selected" },
           style: "primary",
           action_id: "add_selected",
           value: itemsPayload,

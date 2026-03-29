@@ -104,27 +104,40 @@ async function processMessage(messageText: string, channel: string) {
   }
 }
 
+function getPriorityEmoji(priority: string): string {
+  switch (priority) {
+    case "Urgent": return ":rotating_light:";
+    case "High": return ":red_circle:";
+    case "Medium": return ":large_orange_circle:";
+    case "Low": return ":white_circle:";
+    default: return ":white_circle:";
+  }
+}
+
 function buildInteractiveBlocks(items: ExtractedItem[]) {
   const checkboxOptions = items.map((item, i) => {
-    const meta = [
-      item.priority,
-      item.project || "No project",
-      item.assignee ? `@${item.assignee}` : null,
-      item.due_date || null,
-    ]
-      .filter(Boolean)
-      .join(" | ");
+    const priorityEmoji = getPriorityEmoji(item.priority);
+    const project = item.project ? `\`${item.project}\`` : "";
+    const assignee = item.assignee ? `:bust_in_silhouette: ${item.assignee}` : "";
+    const dueDate = item.due_date ? `:calendar: ${item.due_date}` : "";
+
+    const metaParts = [project, assignee, dueDate].filter(Boolean).join("  ");
+    const description = item.description ? `\n      _${item.description.slice(0, 60)}_` : "";
 
     return {
       text: {
         type: "mrkdwn" as const,
-        text: `*${item.title}*\n${meta}`,
+        text: `${priorityEmoji}  *${item.title}*${description}\n      ${metaParts}`,
+      },
+      description: {
+        type: "mrkdwn" as const,
+        text: `${item.priority} priority`,
       },
       value: String(i),
     };
   });
 
-  // Encode items in the button value (keep descriptions short to stay under 2000 char limit)
+  // Encode items in the button value
   const itemsPayload = JSON.stringify(
     items.map((item) => ({
       type: item.type,
@@ -139,12 +152,22 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
 
   const blocks: any[] = [
     {
-      type: "section",
+      type: "header",
       text: {
-        type: "mrkdwn",
-        text: `:clipboard: *I found ${items.length} item(s) in your message:*`,
+        type: "plain_text",
+        text: `${items.length} action item${items.length === 1 ? "" : "s"} found`,
       },
     },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "Select the items you want to add to Notion, then tap *Add Selected*.",
+        },
+      ],
+    },
+    { type: "divider" },
     {
       type: "actions",
       block_id: "task_checkboxes",
@@ -153,17 +176,18 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
           type: "checkboxes",
           action_id: "select_tasks",
           options: checkboxOptions,
-          initial_options: checkboxOptions, // All selected by default
+          initial_options: checkboxOptions,
         },
       ],
     },
+    { type: "divider" },
     {
       type: "actions",
       block_id: "task_actions",
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Add Selected" },
+          text: { type: "plain_text", text: ":white_check_mark:  Add Selected" },
           style: "primary",
           action_id: "add_selected",
           value: itemsPayload,
