@@ -93,6 +93,7 @@ export async function queryTasks(filters?: {
   status?: string;
   statusNot?: string;
   dueDate?: string;
+  dueDateRange?: { start: string; end: string };
   overdue?: boolean;
   project?: string;
   recent?: number; // return N most recently created tasks
@@ -117,6 +118,17 @@ export async function queryTasks(filters?: {
     filterConditions.push({
       property: "Due Date",
       date: { equals: filters.dueDate },
+    });
+  }
+
+  if (filters?.dueDateRange) {
+    filterConditions.push({
+      property: "Due Date",
+      date: { on_or_after: filters.dueDateRange.start },
+    });
+    filterConditions.push({
+      property: "Due Date",
+      date: { on_or_before: filters.dueDateRange.end },
     });
   }
 

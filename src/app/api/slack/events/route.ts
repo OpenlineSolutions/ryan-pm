@@ -335,14 +335,35 @@ async function processReaction(channel: string, messageTs: string) {
 
 // --- Feature: App Home Tab ---
 
-function formatTaskLine(task: NotionTask): string {
-  const parts = [
-    task.project ? `\`${task.project}\`` : null,
-    task.assignee || null,
-    task.priority || null,
-    task.dueDate ? `due ${task.dueDate}` : null,
-  ].filter(Boolean).join(" · ");
-  return `• *${task.title}*  ${parts}`;
+// --- Helpers for App Home Dashboard ---
+
+function getWeekRange(): { start: string; end: string; monday: Date } {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon, ...
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return {
+    start: monday.toISOString().split("T")[0],
+    end: sunday.toISOString().split("T")[0],
+    monday,
+  };
+}
+
+function getDayLabel(dateStr: string, monday: Date): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[d.getDay()];
+}
+
+function daysOverdue(dueDateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDateStr + "T00:00:00");
+  return Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 async function publishAppHome(userId: string) {
@@ -351,48 +372,159 @@ async function publishAppHome(userId: string) {
 
   try {
     const today = new Date().toISOString().split("T")[0];
+    const week = getWeekRange();
 
-    // Fetch all three task lists in parallel
-    const [dueTodayTasks, overdueTasks, recentTasks] = await Promise.all([
-      queryTasks({ dueDate: today, statusNot: "Done" }),
+    // Fetch data in parallel: this week's tasks, all tasks (for health + workload), overdue
+    const [weekTasks, allTasks, overdueTasks] = await Promise.all([
+      queryTasks({ dueDateRange: { start: week.start, end: week.end }, statusNot: "Done" }),
+      queryTasks({}),
       queryTasks({ overdue: true }),
-      queryTasks({ recent: 5 }),
     ]);
 
-    const blocks: any[] = [
-      {
-        type: "header",
-        text: { type: "plain_text", text: "AI PM Dashboard" },
-      },
-      { type: "divider" },
-      // Due Today section
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `:calendar: *Due Today* (${dueTodayTasks.length})`,
-        },
-      },
-    ];
+    const blocks: any[] = [];
 
-    if (dueTodayTasks.length > 0) {
+    // --- Section 1: Header ---
+    const now = new Date().toLocaleString("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    blocks.push({
+      type: "header",
+      text: { type: "plain_text", text: "Your Operations Dashboard" },
+    });
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `Last updated: ${now}` }],
+    });
+    blocks.push({ type: "divider" });
+
+    // --- Section 2: This Week ---
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: ":calendar: *This Week*" },
+    });
+
+    if (weekTasks.length === 0) {
       blocks.push({
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: dueTodayTasks.map(formatTaskLine).join("\n"),
-        },
+        text: { type: "mrkdwn", text: "_No tasks due this week._" },
+      });
+    } else {
+      // Group by day of week
+      const byDay: Record<string, NotionTask[]> = {};
+      for (const task of weekTasks) {
+        if (!task.dueDate) continue;
+        const label = getDayLabel(task.dueDate, week.monday);
+        if (!byDay[label]) byDay[label] = [];
+        byDay[label].push(task);
+      }
+
+      const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      for (const day of dayOrder) {
+        const tasks = byDay[day];
+        if (!tasks || tasks.length === 0) continue;
+        const lines = tasks.map((t) => {
+          const project = t.project ? ` \`${t.project}\`` : "";
+          const assignee = t.assignee ? ` ${t.assignee}` : "";
+          const meta = [project, assignee].filter(Boolean).join(" ·");
+          return `  • ${t.title} ·${meta}`;
+        });
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${day}* (${tasks.length})\n${lines.join("\n")}`,
+          },
+        });
+      }
+    }
+
+    blocks.push({ type: "divider" });
+
+    // --- Section 3: Project Health ---
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: ":bar_chart: *Project Health*" },
+    });
+
+    const projects = ["McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", "Internal"];
+    const projectLines: string[] = [];
+    for (const proj of projects) {
+      const projTasks = allTasks.filter((t) => t.project === proj || (proj === "Internal" && !t.project));
+      if (projTasks.length === 0) continue;
+      const done = projTasks.filter((t) => t.status === "Done").length;
+      const overdueCount = projTasks.filter(
+        (t) => t.status !== "Done" && t.dueDate && t.dueDate < today
+      ).length;
+      const taskWord = projTasks.length === 1 ? "task" : "tasks";
+      const warning = overdueCount > 0 ? "  :warning:" : "";
+      projectLines.push(
+        `${proj}     ${projTasks.length} ${taskWord} · ${done} done · ${overdueCount} overdue${warning}`
+      );
+    }
+
+    if (projectLines.length > 0) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: projectLines.join("\n") },
       });
     } else {
       blocks.push({
         type: "section",
-        text: { type: "mrkdwn", text: "_No tasks due today._" },
+        text: { type: "mrkdwn", text: "_No projects with tasks._" },
       });
     }
 
     blocks.push({ type: "divider" });
 
-    // Overdue section
+    // --- Section 4: Team Workload ---
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: ":busts_in_silhouette: *Team Workload*" },
+    });
+
+    const openTasks = allTasks.filter((t) => t.status !== "Done");
+    const byAssignee: Record<string, number> = {};
+    let unassigned = 0;
+    for (const t of openTasks) {
+      if (t.assignee) {
+        byAssignee[t.assignee] = (byAssignee[t.assignee] || 0) + 1;
+      } else {
+        unassigned++;
+      }
+    }
+
+    const workloadLines: string[] = [];
+    // Sort by count descending
+    const sortedAssignees = Object.entries(byAssignee).sort((a, b) => b[1] - a[1]);
+    for (const [name, count] of sortedAssignees) {
+      const taskWord = count === 1 ? "open task" : "open tasks";
+      workloadLines.push(`${name}        ${count} ${taskWord}`);
+    }
+    if (unassigned > 0) {
+      const taskWord = unassigned === 1 ? "task" : "tasks";
+      workloadLines.push(`Unassigned   ${unassigned} ${taskWord}`);
+    }
+
+    if (workloadLines.length > 0) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: workloadLines.join("\n") },
+      });
+    } else {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: "_No open tasks._" },
+      });
+    }
+
+    blocks.push({ type: "divider" });
+
+    // --- Section 5: Overdue ---
     blocks.push({
       type: "section",
       text: {
@@ -402,12 +534,15 @@ async function publishAppHome(userId: string) {
     });
 
     if (overdueTasks.length > 0) {
+      const overdueLines = overdueTasks.map((t) => {
+        const days = t.dueDate ? daysOverdue(t.dueDate) : 0;
+        const project = t.project ? ` \`${t.project}\`` : "";
+        const assignee = t.assignee ? ` ${t.assignee}` : "";
+        return `• *${t.title}*${project} ·${assignee} · ${days}d late`;
+      });
       blocks.push({
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: overdueTasks.map(formatTaskLine).join("\n"),
-        },
+        text: { type: "mrkdwn", text: overdueLines.join("\n") },
       });
     } else {
       blocks.push({
@@ -418,42 +553,20 @@ async function publishAppHome(userId: string) {
 
     blocks.push({ type: "divider" });
 
-    // Recent Tasks section
+    // --- Section 6: Quick Actions ---
     blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `:new: *Recent Tasks* (last 5)`,
-      },
-    });
-
-    if (recentTasks.length > 0) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: recentTasks.map(formatTaskLine).join("\n"),
-        },
-      });
-    } else {
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: "_No tasks yet._" },
-      });
-    }
-
-    blocks.push({ type: "divider" });
-
-    // Footer
-    const now = new Date().toLocaleString("en-US", {
-      timeZone: "America/Los_Angeles",
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-    blocks.push({
-      type: "context",
+      type: "actions",
       elements: [
-        { type: "mrkdwn", text: `Last updated: ${now}` },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "View All Tasks" },
+          action_id: "home_view_tasks",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Morning Digest" },
+          action_id: "home_digest",
+        },
       ],
     });
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySlackRequest } from "@/lib/slack";
-import { createTask } from "@/lib/notion-tasks";
+import { createTask, queryTasks, NotionTask } from "@/lib/notion-tasks";
 import type { ExtractedItem } from "@/lib/categorize";
 
 export async function POST(req: NextRequest) {
@@ -135,8 +135,155 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // --- Quick Action: View All Tasks ---
+  if (actionId === "home_view_tasks") {
+    const userId = payload.user?.id;
+    if (userId) {
+      handleViewAllTasks(userId).catch((err) =>
+        console.error("[Interact] View all tasks error:", err)
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // --- Quick Action: Morning Digest ---
+  if (actionId === "home_digest") {
+    const userId = payload.user?.id;
+    if (userId) {
+      handleDigest(userId).catch((err) =>
+        console.error("[Interact] Digest error:", err)
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   // For dropdown changes, just acknowledge (state is tracked by Slack)
   return NextResponse.json({ ok: true });
+}
+
+// --- Quick Action Handlers ---
+
+async function handleViewAllTasks(userId: string) {
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  if (!slackToken) return;
+
+  const tasks = await queryTasks({ statusNot: "Done" });
+
+  const lines = tasks.map((t) => {
+    const project = t.project ? `\`${t.project}\`` : "";
+    const assignee = t.assignee || "";
+    const due = t.dueDate ? `due ${t.dueDate}` : "";
+    const parts = [project, assignee, due].filter(Boolean).join(" · ");
+    return `• *${t.title}*  ${parts}`;
+  });
+
+  const text =
+    tasks.length > 0
+      ? `:clipboard: *All Open Tasks* (${tasks.length})\n\n${lines.join("\n")}`
+      : "_No open tasks._";
+
+  // Open a DM with the user and post there
+  const dmRes = await fetch("https://slack.com/api/conversations.open", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${slackToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ users: userId }),
+  });
+  const dmData = await dmRes.json();
+  if (!dmData.ok) {
+    console.error("[Interact] Failed to open DM:", dmData.error);
+    return;
+  }
+
+  await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${slackToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      channel: dmData.channel.id,
+      text,
+      blocks: [{ type: "section", text: { type: "mrkdwn", text } }],
+      unfurl_links: false,
+    }),
+  });
+}
+
+async function handleDigest(userId: string) {
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  if (!slackToken) return;
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const [dueTodayTasks, overdueTasks, inboxTasks] = await Promise.all([
+    queryTasks({ dueDate: today }),
+    queryTasks({ overdue: true }),
+    queryTasks({ status: "Inbox" }),
+  ]);
+
+  const dueToday = dueTodayTasks.filter((t) => t.status !== "Done");
+  const overdue = overdueTasks.filter((t) => t.dueDate && t.dueDate < today);
+
+  const sections: string[] = [];
+
+  if (overdue.length > 0) {
+    const lines = overdue.map(
+      (t) => `- <${t.url}|${t.title}> (due ${t.dueDate}) ${t.assignee ? `@${t.assignee}` : ""}`
+    );
+    sections.push(`:rotating_light: *Overdue (${overdue.length})*\n${lines.join("\n")}`);
+  }
+
+  if (dueToday.length > 0) {
+    const lines = dueToday.map(
+      (t) => `- <${t.url}|${t.title}> [${t.status}] ${t.assignee ? `@${t.assignee}` : ""}`
+    );
+    sections.push(`:calendar: *Due Today (${dueToday.length})*\n${lines.join("\n")}`);
+  }
+
+  if (inboxTasks.length > 0) {
+    const lines = inboxTasks.map(
+      (t) => `- <${t.url}|${t.title}> ${t.project ? `[${t.project}]` : ""}`
+    );
+    sections.push(`:inbox_tray: *Inbox (${inboxTasks.length})*\n${lines.join("\n")}`);
+  }
+
+  const total = dueToday.length + overdue.length + inboxTasks.length;
+  const digestText =
+    total > 0
+      ? `:sunrise: *Morning Digest - ${today}*\n\n${sections.join("\n\n")}\n\n_${total} items need attention._`
+      : `:sunrise: *Morning Digest - ${today}*\n\n_Nothing to report. All clear!_`;
+
+  // Open DM and post digest
+  const dmRes = await fetch("https://slack.com/api/conversations.open", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${slackToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ users: userId }),
+  });
+  const dmData = await dmRes.json();
+  if (!dmData.ok) {
+    console.error("[Interact] Failed to open DM for digest:", dmData.error);
+    return;
+  }
+
+  await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${slackToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      channel: dmData.channel.id,
+      text: digestText,
+      blocks: [{ type: "section", text: { type: "mrkdwn", text: digestText } }],
+      unfurl_links: false,
+    }),
+  });
 }
 
 const PROJECTS = ["McDonalds", "Burger King", "In-N-Out", "Chick-fil-A", "Chipotle", "Internal"];
