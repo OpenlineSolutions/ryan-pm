@@ -55,6 +55,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Handle file uploads (transcripts, meeting notes)
+    if (event?.type === "message" && event.subtype === "file_share" && event.files?.length > 0) {
+      const file = event.files[0];
+      // Only process text files
+      if (file.mimetype?.startsWith("text/") || file.filetype === "text") {
+        after(async () => {
+          await processFileUpload(file.id, event.channel);
+        });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     // Handle message events
     if (event?.type === "message") {
       // Ignore bot messages, edits, and thread replies
@@ -137,6 +149,88 @@ async function directCreate(messageText: string, channel: string) {
     }
   } catch (err) {
     console.error("[SlackBot] Direct create error:", err);
+  }
+}
+
+async function processFileUpload(fileId: string, channel: string) {
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  if (!slackToken) return;
+
+  try {
+    // Get file info to get the download URL
+    const infoRes = await fetch(`https://slack.com/api/files.info?file=${fileId}`, {
+      headers: { Authorization: `Bearer ${slackToken}` },
+    });
+    const infoData = await infoRes.json();
+
+    if (!infoData.ok || !infoData.file) {
+      console.error("[SlackBot] Failed to get file info:", infoData.error);
+      return;
+    }
+
+    const file = infoData.file;
+    const downloadUrl = file.url_private;
+
+    if (!downloadUrl) {
+      console.error("[SlackBot] No download URL for file");
+      return;
+    }
+
+    // Download the file content
+    const fileRes = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${slackToken}` },
+    });
+    const fileContent = await fileRes.text();
+
+    if (!fileContent || fileContent.trim().length === 0) {
+      return;
+    }
+
+    console.log(`[SlackBot] Processing uploaded file: ${file.name} (${fileContent.length} chars)`);
+
+    // Use the transcript extraction (better for long-form content)
+    const { extractFromTranscript } = await import("@/lib/categorize");
+    const items = await extractFromTranscript(fileContent);
+
+    if (items.length === 0) {
+      await fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${slackToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel,
+          text: `Processed *${file.name}* but found no action items.`,
+        }),
+      });
+      return;
+    }
+
+    // Post the checkmark approval flow
+    const blocks = buildInteractiveBlocks(items);
+    await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${slackToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        channel,
+        text: `Found ${items.length} action item(s) from *${file.name}*`,
+        blocks: [
+          {
+            type: "context",
+            elements: [
+              { type: "mrkdwn", text: `From uploaded file: *${file.name}*` },
+            ],
+          },
+          ...blocks,
+        ],
+      }),
+    });
+  } catch (err) {
+    console.error("[SlackBot] Error processing file upload:", err);
   }
 }
 
