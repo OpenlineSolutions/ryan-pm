@@ -567,6 +567,12 @@ async function publishAppHome(userId: string) {
           text: { type: "plain_text", text: "Morning Digest" },
           action_id: "home_digest",
         },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Open Board" },
+          url: "https://www.notion.so/36dce2c74c994add8517f84ba3a0b9ed",
+          action_id: "home_open_board",
+        },
       ],
     });
 
