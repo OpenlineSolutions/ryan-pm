@@ -74,13 +74,14 @@ export async function POST(req: NextRequest) {
         const item = allItems[i];
         const itemState = stateValues[`item_${i}`] || {};
 
-        // Apply dropdown overrides if user changed them (edit view)
+        // Apply dropdown/datepicker overrides if user changed them (edit view)
         const project =
           itemState[`project_${i}`]?.selected_option?.value || item.project;
         const assignee =
           itemState[`assignee_${i}`]?.selected_option?.value || item.assignee;
-        const priority =
-          itemState[`priority_${i}`]?.selected_option?.value || item.priority;
+        const priority = item.priority;
+        const dueDate =
+          itemState[`due_date_${i}`]?.selected_date || item.due_date;
 
         const result = await createTask({
           title: item.title,
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
           project: project === "Internal" ? null : project,
           priority,
           assignee: assignee === "Unassigned" ? null : assignee,
-          dueDate: item.due_date,
+          dueDate: dueDate,
           source: "Slack",
           notes: item.description,
         });
@@ -214,17 +215,10 @@ function buildEditBlocks(items: ExtractedItem[]) {
           })),
         },
         {
-          type: "static_select",
-          action_id: `priority_${i}`,
-          placeholder: { type: "plain_text", text: "Priority" },
-          initial_option: {
-            text: { type: "plain_text", text: item.priority },
-            value: item.priority,
-          },
-          options: PRIORITIES.map((p) => ({
-            text: { type: "plain_text", text: p },
-            value: p,
-          })),
+          type: "datepicker",
+          action_id: `due_date_${i}`,
+          placeholder: { type: "plain_text", text: "Due date" },
+          ...(item.due_date ? { initial_date: item.due_date } : {}),
         },
       ],
     });
