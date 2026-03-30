@@ -56,15 +56,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle file uploads (transcripts, meeting notes)
-    if (event?.type === "message" && event.subtype === "file_share" && event.files?.length > 0) {
+    if (event?.type === "message" && event.files?.length > 0) {
       const file = event.files[0];
-      // Only process text files
-      if (file.mimetype?.startsWith("text/") || file.filetype === "text") {
+      console.log(`[SlackBot] File detected: ${file.name}, type: ${file.mimetype}, filetype: ${file.filetype}, subtype: ${event.subtype}`);
+      // Process text-based files
+      if (
+        file.mimetype?.startsWith("text/") ||
+        file.filetype === "text" ||
+        file.filetype === "txt" ||
+        file.name?.endsWith(".txt") ||
+        file.name?.endsWith(".md") ||
+        file.name?.endsWith(".csv")
+      ) {
         after(async () => {
           await processFileUpload(file.id, event.channel);
         });
+        return NextResponse.json({ ok: true });
       }
-      return NextResponse.json({ ok: true });
     }
 
     // Handle message events
