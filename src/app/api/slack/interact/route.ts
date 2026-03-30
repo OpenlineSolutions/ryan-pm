@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
           dueDate: dueDate,
           source: "Slack",
           notes: item.description,
+          steps: item.steps || [],
         });
 
         const projectTag = project ? ` \`${project}\`` : "";

@@ -16,6 +16,7 @@ export type CreateTaskInput = {
   dueDate?: string | null; // ISO date string
   source?: string;
   notes?: string;
+  steps?: string[]; // sub-steps written into the page body
 };
 
 export type NotionTask = {
@@ -71,13 +72,78 @@ export async function createTask(input: CreateTaskInput): Promise<{ id: string; 
     };
   }
 
+  // Build page content blocks (children)
+  const children: any[] = [];
+
+  if (input.notes) {
+    children.push({
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [{ type: "text", text: { content: "Context" } }],
+      },
+    });
+    children.push({
+      object: "block",
+      type: "paragraph",
+      paragraph: {
+        rich_text: [{ type: "text", text: { content: input.notes } }],
+      },
+    });
+  }
+
+  if (input.steps && input.steps.length > 0) {
+    children.push({
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [{ type: "text", text: { content: "Steps" } }],
+      },
+    });
+    for (const step of input.steps) {
+      children.push({
+        object: "block",
+        type: "to_do",
+        to_do: {
+          rich_text: [{ type: "text", text: { content: step } }],
+          checked: false,
+        },
+      });
+    }
+  }
+
+  children.push({
+    object: "block",
+    type: "divider",
+    divider: {},
+  });
+  children.push({
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: [
+        {
+          type: "text",
+          text: { content: `Created from ${input.source || "Slack"} on ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` },
+          annotations: { italic: true, color: "gray" },
+        },
+      ],
+    },
+  });
+
+  const body: any = {
+    parent: { database_id: NOTION_DATABASE_ID },
+    properties,
+  };
+
+  if (children.length > 0) {
+    body.children = children;
+  }
+
   const res = await fetch("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: NOTION_HEADERS,
-    body: JSON.stringify({
-      parent: { database_id: NOTION_DATABASE_ID },
-      properties,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

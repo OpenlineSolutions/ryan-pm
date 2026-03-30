@@ -4,6 +4,7 @@ export type ExtractedItem = {
   type: "task" | "status_update" | "reminder";
   title: string;
   description: string;
+  steps: string[]; // sub-steps or implementation details
   project:
     | "McDonalds"
     | "Burger King"
@@ -93,9 +94,10 @@ Rules:
 - Team members: Ryan, Sarah, Jake, Mike. If a name is mentioned, set as assignee. If no name, leave assignee as null.
 - Priority: "Medium" by default. "Urgent" for ASAP/critical/EOD. "High" for important. "Low" for nice-to-have.
 - TODAY IS ${today}. "Tomorrow" = the day after ${today}. "Next week" = the Monday after ${today}. "Friday" = the upcoming Friday. Always return dates as YYYY-MM-DD. No date mentioned = null.
+- "steps": extract any sub-steps, implementation details, or sequential actions mentioned in the message. If the message describes a process or workflow, break it into steps. If it's a simple task with no sub-steps, return an empty array [].
 
 Respond with ONLY a valid JSON array. No markdown.
-Example: [{"type":"task","title":"Finish homepage","description":"Mobile responsive pass","project":"Burger King","assignee":"Sarah","priority":"High","due_date":"2026-04-01"}]`,
+Example: [{"type":"task","title":"Build call-to-task pipeline","description":"Automate transcript processing","steps":["Connect transcript tool to Slack","Bot reads transcript on arrival","AI extracts action items","Post checkmarks for approval","Create tasks in Notion on approve"],"project":"Internal","assignee":null,"priority":"High","due_date":"2026-04-01"}]`,
     prompt: `Extract actionable items:\n\n"${cleanedMessage}"`,
   });
 

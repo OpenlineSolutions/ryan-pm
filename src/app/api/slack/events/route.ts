@@ -135,6 +135,7 @@ async function directCreate(messageText: string, channel: string) {
         dueDate: item.due_date,
         source: "Slack",
         notes: item.description,
+        steps: item.steps || [],
       });
       created.push(`<${result.url}|${item.title}>`);
     }
@@ -302,6 +303,7 @@ function buildInteractiveBlocks(items: ExtractedItem[]) {
       type: item.type,
       title: item.title,
       description: item.description.slice(0, 80),
+      steps: item.steps || [],
       project: item.project,
       assignee: item.assignee,
       priority: item.priority,
