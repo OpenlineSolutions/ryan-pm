@@ -199,7 +199,7 @@ export async function queryTasks(filters?: {
   }
 
   if (filters?.overdue) {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
     filterConditions.push({
       property: "Due Date",
       date: { before: today },

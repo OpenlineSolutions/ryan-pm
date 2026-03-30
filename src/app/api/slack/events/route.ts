@@ -441,8 +441,14 @@ async function processReaction(channel: string, messageTs: string) {
 
 // --- Helpers for App Home Dashboard ---
 
+function getPSTDate(): Date {
+  // Get current date/time in PST
+  const pstStr = new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+  return new Date(pstStr);
+}
+
 function getWeekRange(): { start: string; end: string; monday: Date } {
-  const now = new Date();
+  const now = getPSTDate();
   const day = now.getDay(); // 0=Sun, 1=Mon, ...
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
@@ -451,8 +457,8 @@ function getWeekRange(): { start: string; end: string; monday: Date } {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   return {
-    start: monday.toISOString().split("T")[0],
-    end: sunday.toISOString().split("T")[0],
+    start: monday.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
+    end: sunday.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }),
     monday,
   };
 }
@@ -464,7 +470,7 @@ function getDayLabel(dateStr: string, monday: Date): string {
 }
 
 function daysOverdue(dueDateStr: string): number {
-  const today = new Date();
+  const today = getPSTDate();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDateStr + "T00:00:00");
   return Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));

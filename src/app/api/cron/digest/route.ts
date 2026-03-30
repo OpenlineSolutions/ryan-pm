@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
     // Query Notion for digest data
     const [dueTodayTasks, overdueTasks, inboxTasks] = await Promise.all([

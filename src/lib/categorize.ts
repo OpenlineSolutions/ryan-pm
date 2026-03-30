@@ -71,7 +71,7 @@ Respond with ONLY a valid JSON array. No markdown, no explanation.`,
 export async function extractItems(message: string): Promise<ExtractedItem[]> {
   console.log("[Categorize] Calling AI Gateway for multi-item extraction...");
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 
   // Clean Slack user ID mentions like <@U0APDKU0DPV> before sending to AI
   const cleanedMessage = message.replace(/<@[A-Z0-9]+>/g, "");
