@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (command === "/status") {
+  if (command === "/project") {
     if (!text.trim()) {
       return NextResponse.json({
         response_type: "ephemeral",
