@@ -91,8 +91,11 @@ export async function createTask(input: CreateTaskInput): Promise<{ id: string; 
 
 export async function queryTasks(filters?: {
   status?: string;
+  statusNot?: string;
   dueDate?: string;
   overdue?: boolean;
+  project?: string;
+  recent?: number; // return N most recently created tasks
 }): Promise<NotionTask[]> {
   const filterConditions: any[] = [];
 
@@ -100,6 +103,13 @@ export async function queryTasks(filters?: {
     filterConditions.push({
       property: "Status",
       select: { equals: filters.status },
+    });
+  }
+
+  if (filters?.statusNot) {
+    filterConditions.push({
+      property: "Status",
+      select: { does_not_equal: filters.statusNot },
     });
   }
 
@@ -122,11 +132,24 @@ export async function queryTasks(filters?: {
     });
   }
 
+  if (filters?.project) {
+    filterConditions.push({
+      property: "Project",
+      select: { equals: filters.project },
+    });
+  }
+
   const body: any = {};
   if (filterConditions.length === 1) {
     body.filter = filterConditions[0];
   } else if (filterConditions.length > 1) {
     body.filter = { and: filterConditions };
+  }
+
+  // Sort by created time descending for recent queries
+  if (filters?.recent) {
+    body.sorts = [{ timestamp: "created_time", direction: "descending" }];
+    body.page_size = filters.recent;
   }
 
   const res = await fetch(
