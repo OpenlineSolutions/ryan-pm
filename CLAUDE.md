@@ -54,9 +54,11 @@ The core bug in v1 was that saying "move X to done" created a new task instead o
 - `src/app/api/projects/route.ts` — GET projects
 - `src/app/api/activity/route.ts` — GET recent voice_logs for activity feed
 - `src/app/api/deepgram-token/route.ts` — returns Deepgram API key to browser
+- `src/app/api/telegram/webhook/route.ts` — Telegram bot webhook (message → AI extract → inline keyboard approval → Notion)
 
 ### Shared Logic
 - `src/lib/agent-tools.ts` — shared tool factory functions (makeSearchTasksTool, makeMoveTaskTool, makeCreateTaskTool, makeDeleteTaskTool). Both agent routes import from here.
+- `src/lib/telegram.ts` — Telegram Bot API helpers (sendMessage, editMessageText, answerCallbackQuery)
 - `src/lib/db.ts` — Neon connection via `getDb()`
 - `src/lib/types.ts` — Task, Project, VoiceLog, TaskStatus, Priority types
 - `src/hooks/use-deepgram.ts` — shared Deepgram WebSocket hook used by voice-input + agents-panel
@@ -126,7 +128,8 @@ TASK SHEET (slide-in right):
 
 ## What's NOT Done (Phase 2)
 
-- [ ] Slack/WhatsApp agent integration (cards show but no functionality)
+- [x] Telegram bot integration (message → AI extract → approve → Notion)
+- [ ] WhatsApp agent integration (card shows but no functionality)
 - [ ] Touch/mobile DnD (HTML5 DnD does not fire on touch screens)
 - [ ] Task edit sheet: description field
 - [ ] Real-time board updates (currently polls on agent completion)
